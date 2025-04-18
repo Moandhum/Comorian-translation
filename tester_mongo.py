@@ -2,7 +2,7 @@ import streamlit as st
 from pymongo import MongoClient
 
 # Connexion à MongoDB
-client = MongoClient(st.secrets["mongodb"]["uri"])
+client = MongoClient("mongodb+srv://moandhum:Mybdd02@cluster0.0kzbcne.mongodb.net/Cluster0?retryWrites=true&w=majority")
 db = client["Cluster0"]
 collection = db["translations"]
 

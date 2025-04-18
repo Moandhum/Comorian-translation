@@ -1,6 +1,6 @@
 import streamlit as st
 import requests
-from pymongo.mongo_client import MongoClient
+from pymongo import MongoClient
 
 client = MongoClient(st.secrets["MONGO_URI"])
 db = client["Cluster0"]

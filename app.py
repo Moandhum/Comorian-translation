@@ -3,7 +3,7 @@ import requests
 from pymongo import MongoClient
 
 # Connexion à MongoDB
-client = MongoClient("mongodb://localhost:27017")
+client = MongoClient("mongodb+srv://moandhum:<db_password>@cluster0.0kzbcne.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 db = client["comorian_app"]
 collection = db["translations"]
 

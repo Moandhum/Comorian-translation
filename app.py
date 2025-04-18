@@ -2,9 +2,8 @@ import streamlit as st
 import requests
 from pymongo import MongoClient
 
-# Connexion à MongoDB
-client = MongoClient("mongodb://localhost:27017")
-db = client["comorian_app"]
+client = MongoClient(st.secrets["mongodb+srv://moandhum:Mybdd02@cluster0.0kzbcne.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"])
+db = client["Cluster0"]
 collection = db["translations"]
 
 # Fonction pour récupérer une phrase aléatoire en français depuis l'API Tatoeba

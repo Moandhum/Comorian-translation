@@ -4,7 +4,7 @@ from pymongo import MongoClient
 
 # Connexion à MongoDB
 client = MongoClient("mongodb+srv://moandhum:<db_password>@cluster0.0kzbcne.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
-db = client["comorian_app"]
+db = client["Cluster0"]
 collection = db["translations"]
 
 # Fonction pour récupérer une phrase aléatoire en français depuis l'API Tatoeba

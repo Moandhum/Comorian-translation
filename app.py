@@ -1,8 +1,7 @@
 import streamlit as st
 import requests
-from pymongo import MongoClient
+from pymongo.mongo_client import MongoClient
 
-# Connexion à MongoDB
 client = MongoClient(st.secrets["MONGO_URI"])
 db = client["Cluster0"]
 collection = db["translations"]

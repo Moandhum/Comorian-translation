@@ -1,0 +1,10 @@
+# Environnements virtuels
+myenv/
+venv/
+.env/
+
+
+
+# Dossiers spécifiques à Docker/Dev Containers
+.devcontainer/
+.containers/

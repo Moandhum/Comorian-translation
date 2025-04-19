@@ -78,7 +78,7 @@ def save_to_mongo(french_sentence, comorian_translation, username, sentiment=Non
 
 # Interface Streamlit
 def main():
-    st.title('Salam! A ton tour de participer à la traduction de phrase en Comorien\nYe Mdjuzi ndawe')
+    st.title('Salam! A ton tour de participer à la traduction de phrase en Comorien\nYe Mdjuzi nɗawe')
 
     # Initialiser la phrase française et le sentiment si non défini
     if 'french_sentence' not in st.session_state:

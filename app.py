@@ -49,6 +49,7 @@ def save_to_mongo(french_sentence, comorian_translation, username):
         doc = {
             "french_sentence": french_sentence,
             "comorian_translation": comorian_translation,
+             "username": username
             
         }
         collection.insert_one(doc)
@@ -86,6 +87,7 @@ def display_translations():
                 <div class="translation-item">
                     <strong>Français :</strong> {translation.get('french_sentence', 'Non disponible')}<br>
                     <strong>ShiKomori :</strong> {translation.get('comorian_translation', 'Non disponible')}<br>
+                     <strong>Utilisateur :</strong> {translation.get('username', 'Anonyme')}
                 </div>
                 """,
                 unsafe_allow_html=True

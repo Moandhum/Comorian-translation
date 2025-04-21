@@ -126,7 +126,7 @@ def main():
         )
         st.markdown("""
         - **Son [OU]** : S'écrit avec **u**.  
-          *Exemple* : *muntu* (personne) au lieu de « montou ».  
+          *Exemple* : *mdru* (personne) au lieu de « mdrou ».  
         - **Son [OI]** : S'écrit avec **wa**.  
           *Exemple* : *mwana* (enfant) au lieu de « moina ».
         """)

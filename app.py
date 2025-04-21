@@ -3,42 +3,27 @@ import requests
 from pymongo import MongoClient
 import numpy as np
 import random
+
+
+
 MONGO_URI = st.secrets.get("MONGO_URI")
 
 
+# Connexion à MongoDB local
+try:
+    client = MongoClient(MONGO_URI)
+    db = client["Cluster0"]
+    collection = db["translations"]
 
-
-client = MongoClient(MONGO_URI)
-db = client["Cluster0"]
-collection = db["translations"]
-
-
-# Listes de mots-clés pour détecter le sentiment
-SENTIMENT_KEYWORDS = {
-    "positif": ["heureux", "content", "bien", "joli", "beau", "super", "merveilleux", "gentil", "aime", "amour", "plaisir", "sourire"],
-    "négatif": ["triste", "mal", "fatigué", "dur", "froid", "mauvais", "n'aime", "déteste", "peur", "ennuyeux", "difficile"],
-    "neutre": []  # Les phrases neutres sont celles qui ne contiennent ni mots positifs ni négatifs
-}
-
-# Fonction pour détecter le sentiment d'une phrase
-def detect_sentiment(sentence):
-    sentence = sentence.lower()
-    # Compter les mots positifs et négatifs
-    positive_count = sum(1 for word in SENTIMENT_KEYWORDS["positif"] if word in sentence)
-    negative_count = sum(1 for word in SENTIMENT_KEYWORDS["négatif"] if word in sentence)
-    
-    if positive_count > negative_count:
-        return "positif"
-    elif negative_count > positive_count:
-        return "négatif"
-    else:
-        return "neutre"
+except Exception as e:
+    st.error(f"Erreur de connexion MongoDB : {str(e)}")
+    st.stop()
 
 # Fonction pour récupérer une phrase via l'API Tatoeba
-def get_french_sentence(sentiment=None):
+def get_french_sentence():
     api_url = 'https://tatoeba.org/en/api_v0/search?from=fra&sort=random&limit=10&tags=francais'
     
-    max_attempts = 10  # Nombre maximum de tentatives pour trouver une phrase correspondant au sentiment
+    max_attempts = 10
     attempt = 0
     
     while attempt < max_attempts:
@@ -47,89 +32,155 @@ def get_french_sentence(sentiment=None):
             if response.status_code == 200:
                 data = response.json()
                 if data['results']:
-                    # Parcourir les phrases récupérées pour en trouver une qui correspond
                     for result in data['results']:
                         sentence = result['text']
-                        # Filtrer les phrases : moins de 10 mots et pas d'erreur
                         if len(sentence.split()) <= 10 and not sentence.startswith("Erreur"):
-                            detected_sentiment = detect_sentiment(sentence)
-                            # Si aucun sentiment spécifié, retourner la première phrase valide
-                            if not sentiment:
-                                return sentence
-                            # Si le sentiment détecté correspond à celui demandé, retourner la phrase
-                            if detected_sentiment == sentiment:
-                                return sentence
-            # Si aucune phrase ne correspond, continuer à essayer
+                            return sentence
             attempt += 1
         except Exception as e:
+            st.warning(f"Erreur API Tatoeba : {str(e)}")
             return f"Erreur : {str(e)}"
     
-    return f"Erreur : Aucune phrase correspondant au sentiment '{sentiment}' n'a été trouvée."
+    return "Erreur : Aucune phrase trouvée."
 
 # Fonction pour sauvegarder dans MongoDB
-def save_to_mongo(french_sentence, comorian_translation, username, sentiment=None):
-    doc = {
-        "french_sentence": french_sentence,
-        "comorian_translation": comorian_translation,
-        "username": username,
-        "sentiment": sentiment if sentiment else "non spécifié"
-    }
-    collection.insert_one(doc)
+def save_to_mongo(french_sentence, comorian_translation, username):
+    try:
+        doc = {
+            "french_sentence": french_sentence,
+            "comorian_translation": comorian_translation,
+            "username": username
+            
+        }
+        collection.insert_one(doc)
+    except Exception as e:
+        st.error(f"Erreur lors de la sauvegarde dans MongoDB : {str(e)}")
+
+
+# Fonction pour récupérer et afficher les traductions depuis MongoDB
+def display_translations():
+    st.sidebar.markdown(
+        """
+        <style>
+        .sidebar .sidebar-content {
+            background-color: rgba(0, 0, 139, 0.3); /* Bleu foncé transparent */
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .translation-item {
+            margin-bottom: 10px;
+            padding: 5px;
+            border-bottom: 1px solid #ccc;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+    st.sidebar.subheader("Traductions précédentes")
+    try:
+        translations = collection.find().sort("_id", -1).limit(10)
+        count = 0
+        for translation in translations:
+            count += 1
+            st.sidebar.markdown(
+                f"""
+                <div class="translation-item">
+                    <strong>Français :</strong> {translation.get('french_sentence', 'Non disponible')}<br>
+                    <strong>ShiKomori :</strong> {translation.get('comorian_translation', 'Non disponible')}<br>
+                    <strong>Utilisateur :</strong> {translation.get('username', 'Anonyme')}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        if count == 0:
+            st.sidebar.write("Aucune traduction trouvée dans la base.")
+    except Exception as e:
+        st.sidebar.error(f"Erreur lors de la récupération des traductions : {str(e)}")
 
 # Interface Streamlit
 def main():
-    st.title('Salam! A ton tour de participer à la traduction de phrase en Comorien\nYe Mdjuzi ndawe')
+    # Message de débogage initial
+    
 
-    # Initialiser la phrase française et le sentiment si non défini
+    # Titre principal en bleu foncé
+    st.markdown(
+        '<h1 style="color: #00008B;">Salam! A ton tour de participer à la traduction de phrase en Comorien<br>Ye Mdjuzi ndawe</h1>',
+        unsafe_allow_html=True
+    )
+
+    # Afficher les traductions dans la barre latérale
+    display_translations()
+
+    # Section des rappels de règles avec menu déroulant
+    with st.expander("Quelques rappels des règles du shiKomori", expanded=False):
+        # Titre principal en rouge bordeaux et gras
+        st.markdown(
+            '<h2 style="color: #800020; font-weight: bold;">Quelques rappels des règles du shiKomori</h2>',
+            unsafe_allow_html=True
+        )
+
+        # Sous-titre orthographique en bleu
+        st.markdown(
+            '<h3 style="color: #0000FF;">1. Règles orthographiques</h3>',
+            unsafe_allow_html=True
+        )
+        st.markdown("""
+        - **Son [OU]** : S'écrit avec **u**.  
+          *Exemple* : *muntu* (personne) au lieu de « montou ».  
+        - **Son [OI]** : S'écrit avec **wa**.  
+          *Exemple* : *mwana* (enfant) au lieu de « moina ».
+        """)
+
+        # Sous-titre conjugaison en bleu
+        st.markdown(
+            '<h3 style="color: #0000FF;">2. Conjugaison du verbe « soma » (lire, apprendre, étudier)</h3>',
+            unsafe_allow_html=True
+        )
+        st.markdown("**Forme affirmative**")
+        affirmative_data = [
+            {"Personne": "1ère sing. (je)", "Conjugaison": "ngamsomo"},
+            {"Personne": "2ème sing. (tu)", "Conjugaison": "ngosomo"},
+            {"Personne": "3ème sing. (il/elle)", "Conjugaison": "ngusomo"},
+            {"Personne": "1ère plur. (nous)", "Conjugaison": "ngarisomao"},
+            {"Personne": "2ème plur. (vous)", "Conjugaison": "ngamsomao"},
+            {"Personne": "3ème plur. (ils/elles)", "Conjugaison": "ngwasomao"},
+        ]
+        st.table(affirmative_data)
+
+        st.markdown("**Forme négative**")
+        negative_data = [
+            {"Personne": "1ère sing. (je)", "Conjugaison": "ntsusoma"},
+            {"Personne": "2ème sing. (tu)", "Conjugaison": "kutsusoma"},
+            {"Personne": "3ème sing. (il/elle)", "Conjugaison": "katsusoma"},
+            {"Personne": "1ère plur. (nous)", "Conjugaison": "karitsusoma"},
+            {"Personne": "2ème plur. (vous)", "Conjugaison": "kamtsusoma"},
+            {"Personne": "3ème plur. (ils/elles)", "Conjugaison": "kwatsusoma"},
+        ]
+        st.table(negative_data)
+
+    # Section traduction
     if 'french_sentence' not in st.session_state:
         st.session_state.french_sentence = get_french_sentence()
-        st.session_state.sentiment = None
 
-    # Champ pour le nom d'utilisateur
     username = st.text_input("Entrez votre nom d'utilisateur", key="username_input")
 
-    # Sélection du thème de sentiment
-    st.subheader("Choisissez un thème de sentiment")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("Positif"):
-            st.session_state.sentiment = "positif"
-            st.session_state.french_sentence = get_french_sentence(sentiment="positif")
-            st.rerun()
-    with col2:
-        if st.button("Négatif"):
-            st.session_state.sentiment = "négatif"
-            st.session_state.french_sentence = get_french_sentence(sentiment="négatif")
-            st.rerun()
-    with col3:
-        if st.button("Neutre"):
-            st.session_state.sentiment = "neutre"
-            st.session_state.french_sentence = get_french_sentence(sentiment="neutre")
-            st.rerun()
+    st.write(f"Phrase en français : {st.session_state.french_sentence}")
 
-    # Afficher la phrase française
-    st.write(f"Phrase en français (Sentiment : {st.session_state.sentiment if st.session_state.sentiment else 'non spécifié'}) : {st.session_state.french_sentence}")
-
-    # Bouton pour actualiser la phrase
     if st.button("Actualiser la phrase"):
-        st.session_state.french_sentence = get_french_sentence(sentiment=st.session_state.sentiment)
+        st.session_state.french_sentence = get_french_sentence()
         st.rerun()
 
-    # Champ de saisie pour la traduction
     comorian_translation = st.text_area("Fasiri shiKomori", value="", key=f"translation_{st.session_state.french_sentence}")
 
-    # Bouton pour soumettre
     if st.button('Soumettre'):
         if not username:
             st.error("Veuillez entrer un nom d'utilisateur.")
         elif not comorian_translation:
             st.error("Veuillez entrer une traduction.")
         else:
-            # Sauvegarder dans MongoDB
-            save_to_mongo(st.session_state.french_sentence, comorian_translation, username, st.session_state.sentiment)
+            save_to_mongo(st.session_state.french_sentence, comorian_translation, username)
             st.success("Traduction soumise avec succès !")
-            # Réinitialiser la phrase française et garder le sentiment
-            st.session_state.french_sentence = get_french_sentence(sentiment=st.session_state.sentiment)
+            st.session_state.french_sentence = get_french_sentence()
             st.rerun()
 
 if __name__ == '__main__':

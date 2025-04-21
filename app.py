@@ -1,70 +1,53 @@
 import streamlit as st
-import requests
 from pymongo import MongoClient
-import numpy as np
-import random
-MONGO_URI = st.secrets.get("MONGO_URI")
+import requests
+import json
 
-
-
-
-client = MongoClient(MONGO_URI)
-db = client["Cluster0"]
+# Connexion à MongoDB
+client = MongoClient("mongodb://localhost:27017")
+db = client["comorian_app"]
 collection = db["translations"]
 
-
-# Listes de mots-clés pour détecter le sentiment
-SENTIMENT_KEYWORDS = {
-    "positif": ["heureux", "content", "bien", "joli", "beau", "super", "merveilleux", "gentil", "aime", "amour", "plaisir", "sourire"],
-    "négatif": ["triste", "mal", "fatigué", "dur", "froid", "mauvais", "n'aime", "déteste", "peur", "ennuyeux", "difficile"],
-    "neutre": []  # Les phrases neutres sont celles qui ne contiennent ni mots positifs ni négatifs
-}
-
-# Fonction pour détecter le sentiment d'une phrase
-def detect_sentiment(sentence):
-    sentence = sentence.lower()
-    # Compter les mots positifs et négatifs
-    positive_count = sum(1 for word in SENTIMENT_KEYWORDS["positif"] if word in sentence)
-    negative_count = sum(1 for word in SENTIMENT_KEYWORDS["négatif"] if word in sentence)
-    
-    if positive_count > negative_count:
-        return "positif"
-    elif negative_count > positive_count:
-        return "négatif"
-    else:
-        return "neutre"
-
-# Fonction pour récupérer une phrase via l'API Tatoeba
+# Fonction pour récupérer une phrase via Ollama en local
 def get_french_sentence(sentiment=None):
-    api_url = 'https://tatoeba.org/en/api_v0/search?from=fra&sort=random&limit=10&tags=francais'
+    api_url = "http://localhost:11434/api/generate"  # URL de l'API Ollama en local
+    model_name = "tinyllama"  # Modèle à utiliser, remplacez par votre modèle (ex. llama3, gemma)
     
-    max_attempts = 10  # Nombre maximum de tentatives pour trouver une phrase correspondant au sentiment
-    attempt = 0
+    # Définir le prompt en fonction du sentiment
+    sentiment_prompt = {
+        "positif": "Génère une phrase positive en français, maximum 10 mots.",
+        "négatif": "Génère une phrase négative en français, maximum 10 mots.",
+        "neutre": "Génère une phrase neutre en français, maximum 10 mots."
+    }.get(sentiment, "Génère une phrase en français, maximum 10 mots.")
     
-    while attempt < max_attempts:
-        try:
-            response = requests.get(api_url)
-            if response.status_code == 200:
-                data = response.json()
-                if data['results']:
-                    # Parcourir les phrases récupérées pour en trouver une qui correspond
-                    for result in data['results']:
-                        sentence = result['text']
-                        # Filtrer les phrases : moins de 10 mots et pas d'erreur
-                        if len(sentence.split()) <= 10 and not sentence.startswith("Erreur"):
-                            detected_sentiment = detect_sentiment(sentence)
-                            # Si aucun sentiment spécifié, retourner la première phrase valide
-                            if not sentiment:
-                                return sentence
-                            # Si le sentiment détecté correspond à celui demandé, retourner la phrase
-                            if detected_sentiment == sentiment:
-                                return sentence
-            # Si aucune phrase ne correspond, continuer à essayer
-            attempt += 1
-        except Exception as e:
-            return f"Erreur : {str(e)}"
+    payload = {
+        "model": model_name,
+        "prompt": sentiment_prompt,
+        "stream": False,  # Réponse unique, pas de streaming
     
-    return f"Erreur : Aucune phrase correspondant au sentiment '{sentiment}' n'a été trouvée."
+        }
+    
+    
+    try:
+        response = requests.post(api_url, json=payload)
+        response.raise_for_status()
+        data = response.json()
+        
+        # Extraire la phrase générée
+        sentence = data.get("response", "").strip()
+        
+        # Vérifier la longueur (moins de 10 mots) et la validité
+        if len(sentence.split()) <= 10 and sentence and not sentence.lower().startswith("erreur"):
+            return sentence
+        return "Erreur : Phrase non valide ou trop longue."
+    except requests.exceptions.ConnectionError:
+        return "Erreur : Serveur Ollama non actif. Lancez 'ollama serve'."
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 404:
+            return f"Erreur : Modèle '{model_name}' non trouvé. Vérifiez avec 'ollama list'."
+        return f"Erreur HTTP : {str(e)}"
+    except Exception as e:
+        return f"Erreur : {str(e)}"
 
 # Fonction pour sauvegarder dans MongoDB
 def save_to_mongo(french_sentence, comorian_translation, username, sentiment=None):

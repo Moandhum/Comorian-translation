@@ -129,6 +129,8 @@ def main():
           *Exemple* : *mdru* (personne) au lieu de « mdrou ».  
         - **Son [OI]** : S'écrit avec **wa**.  
           *Exemple* : *mwana* (enfant) au lieu de « moina ».
+        - **Son [CH]** : S'écrit avec **sh**.  
+          *Exemple* : *shiyo* (enfant) au lieu de «chiyo».
         """)
 
         # Sous-titre conjugaison en bleu

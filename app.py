@@ -131,34 +131,9 @@ def main():
           *Exemple* : *mwana* (enfant) au lieu de « moina ».
         - **Son [CH]** : S'écrit avec **sh**.  
           *Exemple* : *shiyo* (enfant) au lieu de «chiyo».
+        - **Son [TCH]** : S'écrit avec **c**.  
+          *Exemple* : *macacari* (enfant) au lieu de «matchatchari».
         """)
-
-        # Sous-titre conjugaison en bleu
-        st.markdown(
-            '<h3 style="color: #0000FF;">2. Conjugaison du verbe « soma » (lire, apprendre, étudier)</h3>',
-            unsafe_allow_html=True
-        )
-        st.markdown("**Forme affirmative**")
-        affirmative_data = [
-            {"Personne": "1ère sing. (je)", "Conjugaison": "ngamsomo"},
-            {"Personne": "2ème sing. (tu)", "Conjugaison": "ngosomo"},
-            {"Personne": "3ème sing. (il/elle)", "Conjugaison": "ngusomo"},
-            {"Personne": "1ère plur. (nous)", "Conjugaison": "ngarisomao"},
-            {"Personne": "2ème plur. (vous)", "Conjugaison": "ngamsomao"},
-            {"Personne": "3ème plur. (ils/elles)", "Conjugaison": "ngwasomao"},
-        ]
-        st.table(affirmative_data)
-
-        st.markdown("**Forme négative**")
-        negative_data = [
-            {"Personne": "1ère sing. (je)", "Conjugaison": "ntsusoma"},
-            {"Personne": "2ème sing. (tu)", "Conjugaison": "kutsusoma"},
-            {"Personne": "3ème sing. (il/elle)", "Conjugaison": "katsusoma"},
-            {"Personne": "1ère plur. (nous)", "Conjugaison": "karitsusoma"},
-            {"Personne": "2ème plur. (vous)", "Conjugaison": "kamtsusoma"},
-            {"Personne": "3ème plur. (ils/elles)", "Conjugaison": "kwatsusoma"},
-        ]
-        st.table(negative_data)
 
     # Section traduction
     if 'french_sentence' not in st.session_state:

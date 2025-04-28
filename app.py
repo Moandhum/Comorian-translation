@@ -104,7 +104,7 @@ def main():
 
     # Titre principal en bleu foncé
     st.markdown(
-        '<h1 style="color: #00008B;">Salam! A ton tour de participer à la traduction de phrase en Comorien<br>Ye Mdjuzi ndawe</h1>',
+        '<h1 style="color: #00008B;">Salam! A ton tour de participer à la traduction de phrase en Comorien</h1>',
         unsafe_allow_html=True
     )
 

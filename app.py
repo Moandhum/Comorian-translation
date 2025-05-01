@@ -19,13 +19,11 @@ except Exception as e:
     st.error(f"Erreur de connexion MongoDB : {str(e)}")
     st.stop()
 
-# Fonction pour récupérer une phrase via l'API Tatoeba
+# Fonction pour récupérer une phrase via l'API Tatoeba (inchangée)
 def get_french_sentence():
     api_url = 'https://tatoeba.org/en/api_v0/search?from=fra&sort=random&limit=10&tags=francais'
-    
     max_attempts = 10
     attempt = 0
-    
     while attempt < max_attempts:
         try:
             response = requests.get(api_url)
@@ -40,30 +38,28 @@ def get_french_sentence():
         except Exception as e:
             st.warning(f"Erreur API Tatoeba : {str(e)}")
             return f"Erreur : {str(e)}"
-    
     return "Erreur : Aucune phrase trouvée."
 
-# Fonction pour sauvegarder dans MongoDB
-def save_to_mongo(french_sentence, comorian_translation, username):
+# Fonction pour sauvegarder dans MongoDB (inchangée)
+def save_to_mongo(french_sentence, comorian_translation, username, dialect):
     try:
         doc = {
             "french_sentence": french_sentence,
             "comorian_translation": comorian_translation,
-             "username": username
-            
+            "username": username,
+            "dialect": dialect
         }
         collection.insert_one(doc)
     except Exception as e:
         st.error(f"Erreur lors de la sauvegarde dans MongoDB : {str(e)}")
 
-
-# Fonction pour récupérer et afficher les traductions depuis MongoDB
+# Fonction pour afficher les traductions (adaptée pour mobile)
 def display_translations():
     st.sidebar.markdown(
         """
         <style>
         .sidebar .sidebar-content {
-            background-color: rgba(0, 0, 139, 0.3); /* Bleu foncé transparent */
+            background-color: rgba(0, 0, 139, 0.3);
             padding: 10px;
             border-radius: 5px;
         }
@@ -71,6 +67,15 @@ def display_translations():
             margin-bottom: 10px;
             padding: 5px;
             border-bottom: 1px solid #ccc;
+            font-size: 14px; /* Réduction pour mobile */
+        }
+        @media (max-width: 600px) {
+            .sidebar .sidebar-content {
+                padding: 5px;
+            }
+            .translation-item {
+                font-size: 12px;
+            }
         }
         </style>
         """,
@@ -87,7 +92,8 @@ def display_translations():
                 <div class="translation-item">
                     <strong>Français :</strong> {translation.get('french_sentence', 'Non disponible')}<br>
                     <strong>ShiKomori :</strong> {translation.get('comorian_translation', 'Non disponible')}<br>
-                     <strong>Utilisateur :</strong> {translation.get('username', 'Anonyme')}
+                    <strong>Dialecte :</strong> {translation.get('dialect', 'Non spécifié')}<br>
+                    <strong>Utilisateur :</strong> {translation.get('username', 'Anonyme')}
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -99,7 +105,101 @@ def display_translations():
 
 # Interface Streamlit
 def main():
-   
+    # CSS global pour rendre l'application responsive
+    st.markdown(
+        """
+        <style>
+        /* Styles généraux */
+        .main {
+            padding: 10px;
+        }
+        h1 {
+            font-size: 24px;
+            line-height: 1.2;
+        }
+        h3 {
+            font-size: 18px;
+        }
+        .stButton > button {
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .stTextInput, .stTextArea {
+            width: 100%;
+        }
+        /* Styles pour les boutons de dialecte */
+        .dialect-button-shingazidja {
+            background-color: #87CEFA;
+            color: black;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .dialect-button-shindzouani {
+            background-color: #FF9999;
+            color: black;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .dialect-button-shimwali {
+            background-color: #FFFF99;
+            color: black;
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .dialect-button-shimaore {
+            background-color: #FFFFFF;
+            color: black;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .dialect-button-shingazidja:hover, .dialect-button-shindzouani:hover, 
+        .dialect-button-shimwali:hover, .dialect-button-shimaore:hover {
+            opacity: 0.8;
+        }
+        /* Styles responsive pour mobile */
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 20px;
+            }
+            h3 {
+                font-size: 16px;
+            }
+            .stButton > button {
+                font-size: 14px;
+                padding: 8px;
+            }
+            .stTextInput > div > div > input, .stTextArea > div > div > textarea {
+                font-size: 14px;
+            }
+            /* Forcer les colonnes à s'empiler */
+            .st-emotion-cache-1r4qj8v {
+                flex-direction: column;
+            }
+            .st-emotion-cache-1r4qj8v > div {
+                width: 100% !important;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
     # Compter le nombre total de traductions
     try:
         total_translations = collection.count_documents({})
@@ -110,12 +210,13 @@ def main():
         progress_text = "Erreur lors du comptage"
         st.error(f"Erreur MongoDB : {str(e)}")
 
-    # Titre principal accrocheur et clair
+    # Titre principal avec progress_text en vert
     st.markdown(
         f"""
         <h2 style="color: #00008B;">
-            🌍 Assalam anlaykum! A ton tour de participer à la traduction de phrase en Comorien.</h2>
-            <h2 style="color: #00008B;">On est à  <span style="color: #228B22;">{progress_text}</span> phrases traduites ! !</h2>
+            🌍 Assalam anlaykum! Traduis en comorien et aide-nous à augmenter le chiffre. </h2>
+        <h2 style="color: #00008B;">   On est à <span style="color: #228B22;">{progress_text}</span> phrases traduites ! 💪
+        </h2>
         """,
         unsafe_allow_html=True
     )
@@ -125,13 +226,10 @@ def main():
 
     # Section des rappels de règles avec menu déroulant
     with st.expander("Quelques rappels des règles du shiKomori", expanded=False):
-        # Titre principal en rouge bordeaux et gras
         st.markdown(
             '<h2 style="color: #800020; font-weight: bold;">Quelques rappels des règles du shiKomori</h2>',
             unsafe_allow_html=True
         )
-
-        # Sous-titre orthographique en bleu
         st.markdown(
             '<h3 style="color: #0000FF;">1. Règles orthographiques</h3>',
             unsafe_allow_html=True
@@ -146,7 +244,6 @@ def main():
         - **Son [TCH]** : S'écrit avec **c**.  
           *Exemple* : *macacari* (enfant) au lieu de «matchatchari».
         """)
-        # Sous-titre conjugaison en bleu
         st.markdown(
             '<h3 style="color: #0000FF;">2. Conjugaison du verbe « soma » (lire, apprendre, étudier)</h3>',
             unsafe_allow_html=True
@@ -161,7 +258,6 @@ def main():
             {"Personne": "3ème plur. (ils/elles)", "Conjugaison": "ngwasomao"},
         ]
         st.table(affirmative_data)
-
         st.markdown("**Forme négative**")
         negative_data = [
             {"Personne": "1ère sing. (je)", "Conjugaison": "ntsusoma"},
@@ -172,71 +268,18 @@ def main():
             {"Personne": "3ème plur. (ils/elles)", "Conjugaison": "kwatsusoma"},
         ]
         st.table(negative_data)
-   
+
     # Section choix du dialecte
     st.markdown(
         '<h3 style="color: #00008B;">Choisissez le dialecte pour votre traduction</h3>',
         unsafe_allow_html=True
     )
-    
-    # Style CSS pour les boutons
-    st.markdown(
-        """
-        <style>
-        .dialect-button-shingazidja {
-            background-color: #87CEFA; /* Bleu clair */
-            color: black;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            margin-right: 10px;
-            margin-bottom: 10px;
-        }
-        .dialect-button-shindzouani {
-            background-color: #FF9999; /* Rouge clair */
-            color: black;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            margin-right: 10px;
-            margin-bottom: 10px;
-        }
-        .dialect-button-shimwali {
-            background-color: #FFFF99; /* Jaune clair */
-            color: black;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            margin-right: 10px;
-            margin-bottom: 10px;
-        }
-        .dialect-button-shimaore {
-            background-color: #FFFFFF; /* Blanc */
-            color: black;
-            padding: 10px 20px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            cursor: pointer;
-            margin-right: 10px;
-            margin-bottom: 10px;
-        }
-        .dialect-button-shingazidja:hover, .dialect-button-shindzouani:hover, 
-        .dialect-button-shimwali:hover, .dialect-button-shimaore:hover {
-            opacity: 0.8;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
 
-    # Boutons pour choisir le dialecte
+    # Boutons pour choisir le dialecte (adaptés pour mobile)
     if 'selected_dialect' not in st.session_state:
         st.session_state.selected_dialect = None
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
     with col1:
         if st.button("Shingazidja", key="shingazidja", help="Traduire en Shingazidja"):
             st.session_state.selected_dialect = "Shingazidja"
@@ -274,7 +317,6 @@ def main():
         st.session_state.french_sentence = get_french_sentence()
 
     username = st.text_input("Entrez votre nom d'utilisateur", key="username_input")
-
     st.write(f"Phrase en français : {st.session_state.french_sentence}")
 
     if st.button("Actualiser la phrase"):
@@ -292,64 +334,10 @@ def main():
             st.error("Veuillez sélectionner un dialecte.")
         else:
             save_to_mongo(st.session_state.french_sentence, comorian_translation, username, st.session_state.selected_dialect)
-            st.success(f"Traduction soumise avec succès !")
+            st.success("Traduction soumise avec succès !")
             st.session_state.french_sentence = get_french_sentence()
-            st.session_state.selected_dialect = None  # Réinitialiser le dialecte
+            st.session_state.selected_dialect = None
             st.rerun()
-
-# Modifier la fonction save_to_mongo pour inclure le dialecte
-def save_to_mongo(french_sentence, comorian_translation, username, dialect):
-    try:
-        doc = {
-            "french_sentence": french_sentence,
-            "comorian_translation": comorian_translation,
-            "username": username,
-            "dialect": dialect
-        }
-        collection.insert_one(doc)
-    except Exception as e:
-        st.error(f"Erreur lors de la sauvegarde dans MongoDB : {str(e)}")
-
-# Modifier la fonction display_translations pour afficher le dialecte
-def display_translations():
-    st.sidebar.markdown(
-        """
-        <style>
-        .sidebar .sidebar-content {
-            background-color: rgba(0, 0, 139, 0.3); /* Bleu foncé transparent */
-            padding: 10px;
-            border-radius: 5px;
-        }
-        .translation-item {
-            margin-bottom: 10px;
-            padding: 5px;
-            border-bottom: 1px solid #ccc;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-    st.sidebar.subheader("Traductions précédentes")
-    try:
-        translations = collection.find().sort("_id", -1).limit(10)
-        count = 0
-        for translation in translations:
-            count += 1
-            st.sidebar.markdown(
-                f"""
-                <div class="translation-item">
-                    <strong>Français :</strong> {translation.get('french_sentence', 'Non disponible')}<br>
-                    <strong>ShiKomori :</strong> {translation.get('comorian_translation', 'Non disponible')}<br>
-                    <strong>Dialecte :</strong> {translation.get('dialect', 'Non spécifié')}<br>
-                    <strong>Utilisateur :</strong> {translation.get('username', 'Anonyme')}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-        if count == 0:
-            st.sidebar.write("Aucune traduction trouvée dans la base.")
-    except Exception as e:
-        st.sidebar.error(f"Erreur lors de la récupération des traductions : {str(e)}")
 
 if __name__ == '__main__':
     main()

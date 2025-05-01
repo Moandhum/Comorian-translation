@@ -49,7 +49,7 @@ def save_to_mongo(french_sentence, comorian_translation, username):
         doc = {
             "french_sentence": french_sentence,
             "comorian_translation": comorian_translation,
-            "username": username
+             "username": username
             
         }
         collection.insert_one(doc)
@@ -87,7 +87,7 @@ def display_translations():
                 <div class="translation-item">
                     <strong>Français :</strong> {translation.get('french_sentence', 'Non disponible')}<br>
                     <strong>ShiKomori :</strong> {translation.get('comorian_translation', 'Non disponible')}<br>
-                    <strong>Utilisateur :</strong> {translation.get('username', 'Anonyme')}
+                     <strong>Utilisateur :</strong> {translation.get('username', 'Anonyme')}
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -104,7 +104,7 @@ def main():
 
     # Titre principal en bleu foncé
     st.markdown(
-        '<h1 style="color: #00008B;">Salam! A ton tour de participer à la traduction de phrase en Comorien<br>Ye Mdjuzi ndawe</h1>',
+        '<h1 style="color: #00008B;">Salam! A ton tour de participer à la traduction de phrase en Comorien</h1>',
         unsafe_allow_html=True
     )
 
@@ -126,37 +126,14 @@ def main():
         )
         st.markdown("""
         - **Son [OU]** : S'écrit avec **u**.  
-          *Exemple* : *muntu* (personne) au lieu de « montou ».  
+          *Exemple* : *mdru* (personne) au lieu de « mdrou ».  
         - **Son [OI]** : S'écrit avec **wa**.  
           *Exemple* : *mwana* (enfant) au lieu de « moina ».
+        - **Son [CH]** : S'écrit avec **sh**.  
+          *Exemple* : *shiyo* (enfant) au lieu de «chiyo».
+        - **Son [TCH]** : S'écrit avec **c**.  
+          *Exemple* : *macacari* (enfant) au lieu de «matchatchari».
         """)
-
-        # Sous-titre conjugaison en bleu
-        st.markdown(
-            '<h3 style="color: #0000FF;">2. Conjugaison du verbe « soma » (lire, apprendre, étudier)</h3>',
-            unsafe_allow_html=True
-        )
-        st.markdown("**Forme affirmative**")
-        affirmative_data = [
-            {"Personne": "1ère sing. (je)", "Conjugaison": "ngamsomo"},
-            {"Personne": "2ème sing. (tu)", "Conjugaison": "ngosomo"},
-            {"Personne": "3ème sing. (il/elle)", "Conjugaison": "ngusomo"},
-            {"Personne": "1ère plur. (nous)", "Conjugaison": "ngarisomao"},
-            {"Personne": "2ème plur. (vous)", "Conjugaison": "ngamsomao"},
-            {"Personne": "3ème plur. (ils/elles)", "Conjugaison": "ngwasomao"},
-        ]
-        st.table(affirmative_data)
-
-        st.markdown("**Forme négative**")
-        negative_data = [
-            {"Personne": "1ère sing. (je)", "Conjugaison": "ntsusoma"},
-            {"Personne": "2ème sing. (tu)", "Conjugaison": "kutsusoma"},
-            {"Personne": "3ème sing. (il/elle)", "Conjugaison": "katsusoma"},
-            {"Personne": "1ère plur. (nous)", "Conjugaison": "karitsusoma"},
-            {"Personne": "2ème plur. (vous)", "Conjugaison": "kamtsusoma"},
-            {"Personne": "3ème plur. (ils/elles)", "Conjugaison": "kwatsusoma"},
-        ]
-        st.table(negative_data)
 
     # Section traduction
     if 'french_sentence' not in st.session_state:

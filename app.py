@@ -25,13 +25,13 @@ MOTS_CLES = {
     "voyage": ["gare", "aéroport", "train", "bus", "taxi", "billet", "hôtel", "carte", "bateau", "port", "île", "océan", "plage", "voyage"],
     "maison": ["cuisine", "chambre", "salon", "clé", "lampe", "table", "chaise", "maison", "toit", "cour", "bananier", "mangue", "coco", "village"],
     "école": ["classe", "cahier", "stylo", "livre", "professeur", "élève", "examen", "école", "leçon", "apprendre", "étudier", "savoir"],
-    "vie_quotidienne": ["marché", "plage", "travail", "sport", "musique", "nourriture", "matin", "poisson", "riz", "manioc", "prière", "mosquée", "fête", "mariage", "soleil", "lagon"]
+    "vie_quotidienne": ["marché", "plage", "travail", "sport", "musique", "nourriture", "matin", "poisson", "riz", "prière", "mosquée", "fête", "mariage", "soleil"]
 }
 
 # Fonction pour récupérer une phrase via l’API Tatoeba
 def get_french_sentence():
     api_url = 'https://tatoeba.org/en/api_v0/search?from=fra&to=none&query={}&sort=random'
-    max_attempts = 10
+    max_attempts = 8
     attempt = 0
 
     # Choisir un thème et un mot clé aléatoires

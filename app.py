@@ -19,26 +19,45 @@ except Exception as e:
     st.error(f"Erreur de connexion MongoDB : {str(e)}")
     st.stop()
 
-# Fonction pour récupérer une phrase via l'API Tatoeba (inchangée)
+# Mots clés par thématique
+MOTS_CLES = {
+    "salutations": ["bonjour", "salut", "bonsoir", "merci", "aurevoir", "coucou", "ravi", "nom", "appelle", "prénom", "famille"],
+    "voyage": ["gare", "aéroport", "train", "bus", "taxi", "billet", "hôtel", "carte", "bateau", "port", "île", "océan", "plage", "voyage"],
+    "maison": ["cuisine", "chambre", "salon", "clé", "lampe", "table", "chaise", "maison", "toit", "cour", "bananier", "mangue", "coco", "village"],
+    "école": ["classe", "cahier", "stylo", "livre", "professeur", "élève", "examen", "école", "leçon", "apprendre", "étudier", "savoir"],
+    "vie_quotidienne": ["marché", "plage", "travail", "sport", "musique", "nourriture", "matin", "poisson", "riz", "manioc", "prière", "mosquée", "fête", "mariage", "soleil", "lagon"]
+}
+
+# Fonction pour récupérer une phrase via l’API Tatoeba
 def get_french_sentence():
-    api_url = 'https://tatoeba.org/en/api_v0/search?from=fra&sort=random&limit=10&tags=francais'
+    api_url = 'https://tatoeba.org/en/api_v0/search?from=fra&to=none&query={}&sort=random'
     max_attempts = 10
     attempt = 0
+
+    # Choisir un thème et un mot clé aléatoires
+    theme = random.choice(list(MOTS_CLES.keys()))
+    mot_cle = random.choice(MOTS_CLES[theme])
+
     while attempt < max_attempts:
         try:
-            response = requests.get(api_url)
+            # Faire une requête avec le mot clé
+            response = requests.get(api_url.format(mot_cle))
             if response.status_code == 200:
                 data = response.json()
-                if data['results']:
+                if data.get('results'):
                     for result in data['results']:
                         sentence = result['text']
-                        if len(sentence.split()) <= 10 and not sentence.startswith("Erreur"):
+                        # Vérifier que la phrase a ≤10 mots, ne commence pas par "Erreur", et semble cohérente
+                        if (len(sentence.split()) <= 10 and 
+                            not sentence.startswith("Erreur") and 
+                            mot_cle.lower() in sentence.lower()):  # Vérifie que le mot est présent
                             return sentence
             attempt += 1
         except Exception as e:
             st.warning(f"Erreur API Tatoeba : {str(e)}")
-            return f"Erreur : {str(e)}"
-    return "Erreur : Aucune phrase trouvée."
+            attempt += 1
+    # Fallback si aucune phrase n’est trouvée
+    return f"Erreur : Aucune phrase avec '{mot_cle}' trouvée."
 
 # Fonction pour sauvegarder dans MongoDB (inchangée)
 def save_to_mongo(french_sentence, comorian_translation, username, dialect):
@@ -53,7 +72,7 @@ def save_to_mongo(french_sentence, comorian_translation, username, dialect):
     except Exception as e:
         st.error(f"Erreur lors de la sauvegarde dans MongoDB : {str(e)}")
 
-# Fonction pour afficher les traductions (adaptée pour mobile)
+# Fonction pour afficher les traductions (inchangée)
 def display_translations():
     st.sidebar.markdown(
         """
@@ -67,7 +86,7 @@ def display_translations():
             margin-bottom: 10px;
             padding: 5px;
             border-bottom: 1px solid #ccc;
-            font-size: 14px; /* Réduction pour mobile */
+            font-size: 14px;
         }
         @media (max-width: 600px) {
             .sidebar .sidebar-content {
@@ -103,13 +122,12 @@ def display_translations():
     except Exception as e:
         st.sidebar.error(f"Erreur lors de la récupération des traductions : {str(e)}")
 
-# Interface Streamlit
+# Interface Streamlit (inchangée)
 def main():
-    # CSS global pour rendre l'application responsive
+    # CSS global pour une application responsive
     st.markdown(
         """
         <style>
-        /* Styles généraux */
         .main {
             padding: 10px;
         }
@@ -127,7 +145,6 @@ def main():
         .stTextInput, .stTextArea {
             width: 100%;
         }
-        /* Styles pour les boutons de dialecte */
         .dialect-button-shingazidja {
             background-color: #87CEFA;
             color: black;
@@ -172,7 +189,6 @@ def main():
         .dialect-button-shimwali:hover, .dialect-button-shimaore:hover {
             opacity: 0.8;
         }
-        /* Styles responsive pour mobile */
         @media (max-width: 600px) {
             h1 {
                 font-size: 20px;
@@ -187,7 +203,6 @@ def main():
             .stTextInput > div > div > input, .stTextArea > div > div > textarea {
                 font-size: 14px;
             }
-            /* Forcer les colonnes à s'empiler */
             .st-emotion-cache-1r4qj8v {
                 flex-direction: column;
             }
@@ -209,13 +224,12 @@ def main():
         total_translations = 0
         progress_text = "Erreur lors du comptage"
         st.error(f"Erreur MongoDB : {str(e)}")
-
-    # Titre principal avec progress_text en vert
+# Titre principal
     st.markdown(
         f"""
         <h2 style="color: #00008B;">
-            🌍 Assalam anlaykum! Traduis en comorien et aide-nous à augmenter le chiffre. </h2>
-        <h2 style="color: #00008B;">   On est à <span style="color: #228B22;">{progress_text}</span> phrases traduites ! 💪
+            🌍 Salam ! Traduis des phrases en comorien et aide-nous à augmenter le chiffre ci-dessous.</h2>
+        <h2 style="color: #00008B;">On est à <span style="color: #228B22;">{progress_text}</span> phrases traduites ! 💪
         </h2>
         """,
         unsafe_allow_html=True
@@ -224,7 +238,7 @@ def main():
     # Afficher les traductions dans la barre latérale
     display_translations()
 
-    # Section des rappels de règles avec menu déroulant
+    # Section des rappels de règles
     with st.expander("Quelques rappels des règles du shiKomori", expanded=False):
         st.markdown(
             '<h2 style="color: #800020; font-weight: bold;">Quelques rappels des règles du shiKomori</h2>',
@@ -238,11 +252,11 @@ def main():
         - **Son [OU]** : S'écrit avec **u**.  
           *Exemple* : *mdru* (personne) au lieu de « mdrou ».  
         - **Son [OI]** : S'écrit avec **wa**.  
-          *Exemple* : *mwana* (enfant) au lieu de « moina ».
+          *Exemple* : *mwana* (enfant) au lieu de « moina ».  
         - **Son [CH]** : S'écrit avec **sh**.  
-          *Exemple* : *shiyo* (enfant) au lieu de «chiyo».
+          *Exemple* : *shiyo* (enfant) au lieu de « chiyo ».  
         - **Son [TCH]** : S'écrit avec **c**.  
-          *Exemple* : *macacari* (enfant) au lieu de «matchatchari».
+          *Exemple* : *macacari* (enfant) au lieu de « matchatchari ».  
         """)
         st.markdown(
             '<h3 style="color: #0000FF;">2. Conjugaison du verbe « soma » (lire, apprendre, étudier)</h3>',
@@ -263,9 +277,9 @@ def main():
             {"Personne": "1ère sing. (je)", "Conjugaison": "ntsusoma"},
             {"Personne": "2ème sing. (tu)", "Conjugaison": "kutsusoma"},
             {"Personne": "3ème sing. (il/elle)", "Conjugaison": "katsusoma"},
-            {"Personne": "1ère plur. (nous)", "Conjugaison": "karitsusoma"},
-            {"Personne": "2ème plur. (vous)", "Conjugaison": "kamtsusoma"},
-            {"Personne": "3ème plur. (ils/elles)", "Conjugaison": "kwatsusoma"},
+            {"Personne": "1ère plur. (nous)", "Conjugaison": "ntsusomao"},
+            {"Personne": "2ème plur. (vous)", "Conjugaison": "kutsusomao"},
+            {"Personne": "3ème plur. (ils/elles)", "Conjugaison": "katsusomao"},
         ]
         st.table(negative_data)
 
@@ -275,22 +289,22 @@ def main():
         unsafe_allow_html=True
     )
 
-    # Boutons pour choisir le dialecte (adaptés pour mobile)
+    # Boutons pour choisir le dialecte
     if 'selected_dialect' not in st.session_state:
         st.session_state.selected_dialect = None
 
     col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
     with col1:
-        if st.button("Shingazidja", key="shingazidja", help="Traduire en Shingazidja"):
+        if st.button("Shingazidja", key="shingazidja"):
             st.session_state.selected_dialect = "Shingazidja"
     with col2:
-        if st.button("Shindzouani", key="shindzouani", help="Traduire en Shindzouani"):
+        if st.button("Shindzouani", key="shindzouani"):
             st.session_state.selected_dialect = "Shindzouani"
     with col3:
-        if st.button("Shimwali", key="shimwali", help="Traduire en Shimwali"):
+        if st.button("Shimwali", key="shimwali"):
             st.session_state.selected_dialect = "Shimwali"
     with col4:
-        if st.button("Shimaore", key="shimaore", help="Traduire en Shimaore"):
+        if st.button("Shimaore", key="shimaore"):
             st.session_state.selected_dialect = "Shimaore"
 
     # Appliquer les styles CSS aux boutons

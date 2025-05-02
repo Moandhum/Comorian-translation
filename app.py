@@ -256,7 +256,7 @@ def main():
         - **Son [CH]** : S'écrit avec **sh**.  
           *Exemple* : *shiyo* (enfant) au lieu de « chiyo ».  
         - **Son [TCH]** : S'écrit avec **c**.  
-          *Exemple* : *macacari* (enfant) au lieu de « matchatchari ».  
+          *Exemple* : *cai* (thé) au lieu de « tchai ».  
         """)
         st.markdown(
             '<h3 style="color: #0000FF;">2. Conjugaison du verbe « soma » (lire, apprendre, étudier)</h3>',

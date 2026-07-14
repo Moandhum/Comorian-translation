@@ -38,3 +38,7 @@ typing_extensions==4.13.2
 tzdata==2025.2
 urllib3==2.4.0
 watchdog==6.0.0
+audio-recorder-streamlit==0.0.10
+SpeechRecognition==3.14.1
+openai-whisper==20231117
+soundfile==0.12.1

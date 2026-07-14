@@ -138,6 +138,8 @@ def normalize_audio(audio_bytes):
     """Normalise le volume et filtre le bruit de fond."""
     seg = AudioSegment.from_file(io.BytesIO(audio_bytes))
     seg = seg.set_channels(1).set_frame_rate(16000)
+    if seg.dBFS == float('-inf'):
+        return seg
     target_dbfs = -14.0
     seg = seg.apply_gain(target_dbfs - seg.dBFS)
     seg = seg.high_pass_filter(80)
@@ -149,10 +151,11 @@ def transcribe_by_phrases(audio_seg, lang_code, recognizer):
     from pydub.silence import split_on_silence
 
     # Découper aux silences (min_silence=400ms, seuil=-35 dBFS, garder 200ms de marge)
+    silence_thresh = -40.0 if audio_seg.dBFS == float('-inf') else audio_seg.dBFS - 16
     segments = split_on_silence(
         audio_seg,
         min_silence_len=400,
-        silence_thresh=audio_seg.dBFS - 16,
+        silence_thresh=silence_thresh,
         keep_silence=200
     )
 
@@ -231,31 +234,42 @@ def main():
     lang_code = lang_map[lang]
 
     audio_bytes = None
+    if "_active_km" not in st.session_state:
+        st.session_state._active_km = None
+    if "_last_rec_km" not in st.session_state:
+        st.session_state._last_rec_km = None
+    if "_last_up_km" not in st.session_state:
+        st.session_state._last_up_km = None
+
     tab1, tab2 = st.tabs(["🎤 Enregistrer", "📁 Charger un fichier"])
 
     with tab1:
         rec = audio_recorder(
             text="Enregistrer shiKomori", recording_color="#e81c4f",
             neutral_color="#6aa36f", icon_name="microphone",
-            icon_size="2x", key="rec_komori"
+            icon_size="2x", key="rec_komori", sample_rate=16000
         )
-        if rec:
-            audio_bytes = rec
+        if rec and rec != st.session_state._last_rec_km:
+            st.session_state._last_rec_km = rec
+            st.session_state._active_km = rec
 
     with tab2:
         up = st.file_uploader(
             "Audio shiKomori (WAV, MP3, MP4, M4A, FLAC)",
             type=["wav", "mp3", "mp4", "m4a", "flac"], key="aud_komori"
         )
-        if up:
+        if up and up.file_id != st.session_state._last_up_km:
+            st.session_state._last_up_km = up.file_id
             try:
                 seg = AudioSegment.from_file(io.BytesIO(up.read()))
                 seg = seg.set_channels(1).set_frame_rate(16000)
                 buf = io.BytesIO()
                 seg.export(buf, format="wav")
-                audio_bytes = buf.getvalue()
+                st.session_state._active_km = buf.getvalue()
             except Exception as e:
                 st.error(f"Erreur audio : {e}")
+
+    audio_bytes = st.session_state._active_km
 
     # ---- 3. TRANSCRIPTION SHIKOMORI (par phrases) ----
     if audio_bytes:
@@ -320,31 +334,42 @@ def main():
     st.caption("Enregistre ou charge l'audio de la traduction en français.")
 
     fr_audio_bytes = None
+    if "_active_fr" not in st.session_state:
+        st.session_state._active_fr = None
+    if "_last_rec_fr" not in st.session_state:
+        st.session_state._last_rec_fr = None
+    if "_last_up_fr" not in st.session_state:
+        st.session_state._last_up_fr = None
+
     fr_tab1, fr_tab2 = st.tabs(["🎤 Dicter en français", "📁 Charger audio français"])
 
     with fr_tab1:
         fr_rec = audio_recorder(
             text="Enregistrer français", recording_color="#3498db",
             neutral_color="#2ecc71", icon_name="microphone",
-            icon_size="2x", key="rec_fr"
+            icon_size="2x", key="rec_fr", sample_rate=16000
         )
-        if fr_rec:
-            fr_audio_bytes = fr_rec
+        if fr_rec and fr_rec != st.session_state._last_rec_fr:
+            st.session_state._last_rec_fr = fr_rec
+            st.session_state._active_fr = fr_rec
 
     with fr_tab2:
         fr_up = st.file_uploader(
             "Audio français (WAV, MP3, MP4, M4A, FLAC)",
             type=["wav", "mp3", "mp4", "m4a", "flac"], key="aud_fr"
         )
-        if fr_up:
+        if fr_up and fr_up.file_id != st.session_state._last_up_fr:
+            st.session_state._last_up_fr = fr_up.file_id
             try:
                 seg = AudioSegment.from_file(io.BytesIO(fr_up.read()))
                 seg = seg.set_channels(1).set_frame_rate(16000)
                 buf = io.BytesIO()
                 seg.export(buf, format="wav")
-                fr_audio_bytes = buf.getvalue()
+                st.session_state._active_fr = buf.getvalue()
             except Exception as e:
                 st.error(f"Erreur audio FR : {e}")
+    
+    fr_audio_bytes = st.session_state._active_fr
 
     # Transcription française
     if fr_audio_bytes:
@@ -425,14 +450,17 @@ def main():
                 bar.empty()
 
                 with open(path, "rb") as f:
-                    video_bytes = f.read()
+                    st.session_state.video_bytes = f.read()
                 os.unlink(path)
+                st.success("Vidéo générée avec succès !")
 
-                st.video(video_bytes)
-                st.download_button("⬇️ Télécharger la vidéo", video_bytes, "video_sous_titree.mp4", "video/mp4")
             except Exception as e:
                 bar.empty()
                 st.error(f"Erreur génération : {e}")
+
+    if "video_bytes" in st.session_state:
+        st.video(st.session_state.video_bytes)
+        st.download_button("⬇️ Télécharger la vidéo", st.session_state.video_bytes, "video_sous_titree.mp4", "video/mp4")
 
 
 if __name__ == "__main__":

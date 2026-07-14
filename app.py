@@ -27,9 +27,10 @@ MOTS_CLES = {
     "vie_quotidienne": ["marché", "plage", "travail", "sport", "musique", "nourriture", "matin", "poisson", "riz", "manioc", "prière", "mosquée", "fête", "mariage", "soleil", "lagon"]
 }
 
-# Fonction pour récupérer une phrase via l’API Tatoeba
+# Fonction pour récupérer une phrase via l'API Tatoeba
 def get_french_sentence():
-    api_url = 'https://tatoeba.org/en/api_v0/search?from=fra&to=none&query={}&sort=random'
+    api_url = 'https://tatoeba.org/en/api_v0/search?from=fra&sort=random&limit=10&tags=francais'
+    
     max_attempts = 10
     attempt = 0
 
@@ -71,13 +72,14 @@ def save_to_mongo(french_sentence, comorian_translation, username, dialect):
     except Exception as e:
         st.error(f"Erreur lors de la sauvegarde dans MongoDB : {str(e)}")
 
-# Interface Streamlit (inchangée)
-def main():
-    # CSS global pour une application responsive
-    st.markdown(
+
+# Fonction pour récupérer et afficher les traductions depuis MongoDB
+def display_translations():
+    st.sidebar.markdown(
         """
         <style>
-        .main {
+        .sidebar .sidebar-content {
+            background-color: rgba(0, 0, 139, 0.3); /* Bleu foncé transparent */
             padding: 10px;
         }
         h1 {
@@ -90,34 +92,8 @@ def main():
         .stButton > button {
             width: 100%;
             margin-bottom: 10px;
-        }
-        .stTextInput, .stTextArea {
-            width: 100%;
-        }
-        /* Hover effect for dialect buttons */
-        div[data-testid="column"] button:hover {
-            opacity: 0.8 !important;
-        }
-        @media (max-width: 600px) {
-            h1 {
-                font-size: 20px;
-            }
-            h3 {
-                font-size: 16px;
-            }
-            .stButton > button {
-                font-size: 14px;
-                padding: 8px;
-            }
-            .stTextInput > div > div > input, .stTextArea > div > div > textarea {
-                font-size: 14px;
-            }
-            .st-emotion-cache-1r4qj8v {
-                flex-direction: column;
-            }
-            .st-emotion-cache-1r4qj8v > div {
-                width: 100% !important;
-            }
+            padding: 5px;
+            border-bottom: 1px solid #ccc;
         }
         </style>
         """,
@@ -126,14 +102,31 @@ def main():
 
     # Compter le nombre total de traductions
     try:
-        total_translations = collection.count_documents({})
-        target = 100
-        progress_text = f"{total_translations}/{target}"
+        translations = collection.find().sort("_id", -1).limit(10)
+        count = 0
+        for translation in translations:
+            count += 1
+            st.sidebar.markdown(
+                f"""
+                <div class="translation-item">
+                    <strong>Français :</strong> {translation.get('french_sentence', 'Non disponible')}<br>
+                    <strong>ShiKomori :</strong> {translation.get('comorian_translation', 'Non disponible')}<br>
+                     <strong>Utilisateur :</strong> {translation.get('username', 'Anonyme')}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        if count == 0:
+            st.sidebar.write("Aucune traduction trouvée dans la base.")
     except Exception as e:
-        total_translations = 0
-        progress_text = "Erreur lors du comptage"
-        st.error(f"Erreur MongoDB : {str(e)}")
-# Titre principal
+        st.sidebar.error(f"Erreur lors de la récupération des traductions : {str(e)}")
+
+# Interface Streamlit
+def main():
+    # Message de débogage initial
+    
+
+    # Titre principal en bleu foncé
     st.markdown(
         f"""
         <h2 style="color: #00008B;">
@@ -144,7 +137,10 @@ def main():
         unsafe_allow_html=True
     )
 
-    # Section des rappels de règles
+    # Afficher les traductions dans la barre latérale
+    display_translations()
+
+    # Section des rappels de règles avec menu déroulant
     with st.expander("Quelques rappels des règles du shiKomori", expanded=False):
         st.markdown(
             '<h2 style="color: #800020; font-weight: bold;">Quelques rappels des règles du shiKomori</h2>',
@@ -162,123 +158,15 @@ def main():
         - **Son [CH]** : S'écrit avec **sh**.  
           *Exemple* : *shiyo* (enfant) au lieu de « chiyo ».  
         - **Son [TCH]** : S'écrit avec **c**.  
-          *Exemple* : *macacari* (enfant) au lieu de « matchatchari ».  
+          *Exemple* : *macacari* (enfant) au lieu de «matchatchari».
         """)
-        st.markdown(
-            '<h3 style="color: #0000FF;">2. Conjugaison du verbe « soma » (lire, apprendre, étudier)</h3>',
-            unsafe_allow_html=True
-        )
-        st.markdown("**Forme affirmative**")
-        affirmative_data = [
-            {"Personne": "1ère sing. (je)", "Conjugaison": "ngamsomo"},
-            {"Personne": "2ème sing. (tu)", "Conjugaison": "ngosomo"},
-            {"Personne": "3ème sing. (il/elle)", "Conjugaison": "ngusomo"},
-            {"Personne": "1ère plur. (nous)", "Conjugaison": "ngarisomao"},
-            {"Personne": "2ème plur. (vous)", "Conjugaison": "ngamsomao"},
-            {"Personne": "3ème plur. (ils/elles)", "Conjugaison": "ngwasomao"},
-        ]
-        st.table(affirmative_data)
-        st.markdown("**Forme négative**")
-        negative_data = [
-            {"Personne": "1ère sing. (je)", "Conjugaison": "ntsusoma"},
-            {"Personne": "2ème sing. (tu)", "Conjugaison": "kutsusoma"},
-            {"Personne": "3ème sing. (il/elle)", "Conjugaison": "katsusoma"},
-            {"Personne": "1ère plur. (nous)", "Conjugaison": "ntsusomao"},
-            {"Personne": "2ème plur. (vous)", "Conjugaison": "kutsusomao"},
-            {"Personne": "3ème plur. (ils/elles)", "Conjugaison": "katsusomao"},
-        ]
-        st.table(negative_data)
-
-    # Section choix du dialecte
-    st.markdown(
-        '<h3 style="color: #00008B;">Choisissez le dialecte pour votre traduction</h3>',
-        unsafe_allow_html=True
-    )
-
-    # Boutons pour choisir le dialecte
-    if 'selected_dialect' not in st.session_state:
-        st.session_state.selected_dialect = None
-
-    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
-    with col1:
-        label1 = "✅ Shingazidja" if st.session_state.selected_dialect == "Shingazidja" else "Shingazidja"
-        if st.button(label1, key="shingazidja"):
-            st.session_state.selected_dialect = "Shingazidja"
-            st.rerun()
-    with col2:
-        label2 = "✅ Shindzouani" if st.session_state.selected_dialect == "Shindzouani" else "Shindzouani"
-        if st.button(label2, key="shindzouani"):
-            st.session_state.selected_dialect = "Shindzouani"
-            st.rerun()
-    with col3:
-        label3 = "✅ Shimwali" if st.session_state.selected_dialect == "Shimwali" else "Shimwali"
-        if st.button(label3, key="shimwali"):
-            st.session_state.selected_dialect = "Shimwali"
-            st.rerun()
-    with col4:
-        label4 = "✅ Shimaore" if st.session_state.selected_dialect == "Shimaore" else "Shimaore"
-        if st.button(label4, key="shimaore"):
-            st.session_state.selected_dialect = "Shimaore"
-            st.rerun()
-
-    # Injecter JavaScript pour styliser dynamiquement les boutons de dialecte selon leur texte
-    components.html(
-        """
-        <script>
-        function styleButtons() {
-            const doc = window.parent.document;
-            const buttons = Array.from(doc.querySelectorAll('div[data-testid="column"] button'));
-            buttons.forEach(btn => {
-                const text = btn.textContent || "";
-                if (text.includes("Shingazidja")) {
-                    btn.style.setProperty("background-color", "#87CEFA", "important");
-                    btn.style.setProperty("color", "black", "important");
-                    btn.style.setProperty("border", "none", "important");
-                    btn.style.setProperty("border-radius", "5px", "important");
-                    btn.style.setProperty("width", "100%", "important");
-                } else if (text.includes("Shindzouani")) {
-                    btn.style.setProperty("background-color", "#FF9999", "important");
-                    btn.style.setProperty("color", "black", "important");
-                    btn.style.setProperty("border", "none", "important");
-                    btn.style.setProperty("border-radius", "5px", "important");
-                    btn.style.setProperty("width", "100%", "important");
-                } else if (text.includes("Shimwali")) {
-                    btn.style.setProperty("background-color", "#FFFF99", "important");
-                    btn.style.setProperty("color", "black", "important");
-                    btn.style.setProperty("border", "none", "important");
-                    btn.style.setProperty("border-radius", "5px", "important");
-                    btn.style.setProperty("width", "100%", "important");
-                } else if (text.includes("Shimaore")) {
-                    btn.style.setProperty("background-color", "#FFFFFF", "important");
-                    btn.style.setProperty("color", "black", "important");
-                    btn.style.setProperty("border", "1px solid #ccc", "important");
-                    btn.style.setProperty("border-radius", "5px", "important");
-                    btn.style.setProperty("width", "100%", "important");
-                }
-            });
-        }
-        styleButtons();
-        setTimeout(styleButtons, 100);
-        setTimeout(styleButtons, 500);
-        </script>
-        """,
-        height=0,
-        width=0
-    )
-
-    # Afficher le dialecte sélectionné
-    if st.session_state.selected_dialect:
-        st.write(f"Dialecte sélectionné : **{st.session_state.selected_dialect}**")
-    else:
-        st.warning("Veuillez sélectionner un dialecte avant de traduire.")
 
     # Section traduction
     if 'french_sentence' not in st.session_state:
         st.session_state.french_sentence = get_french_sentence()
 
-    text_area_key = f"translation_{st.session_state.french_sentence}"
+    username = st.text_input("Entrez votre nom d'utilisateur", key="username_input")
 
-    username = st.text_input("Entrez votre nom d'utilisateur (Optionnel)", key="username_input")
     st.write(f"Phrase en français : {st.session_state.french_sentence}")
 
     if st.button("Actualiser la phrase"):
@@ -412,15 +300,9 @@ def main():
         elif not st.session_state.selected_dialect:
             st.error("Veuillez sélectionner un dialecte.")
         else:
-            final_username = username if username.strip() else "Anonyme"
-            save_to_mongo(st.session_state.french_sentence, comorian_translation, final_username, st.session_state.selected_dialect)
+            save_to_mongo(st.session_state.french_sentence, comorian_translation, username)
             st.success("Traduction soumise avec succès !")
             st.session_state.french_sentence = get_french_sentence()
-            st.session_state.selected_dialect = None
-            if text_area_key in st.session_state:
-                st.session_state[text_area_key] = ""
-            if 'last_audio_bytes' in st.session_state:
-                del st.session_state['last_audio_bytes']
             st.rerun()
 
 if __name__ == '__main__':

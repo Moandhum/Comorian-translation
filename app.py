@@ -1,407 +1,439 @@
 import streamlit as st
-import requests
-from pymongo import MongoClient
-import random
 from audio_recorder_streamlit import audio_recorder
 import speech_recognition as sr
 import io
+import os
+import tempfile
+import numpy as np
 from pydub import AudioSegment
-import streamlit.components.v1 as components
+from PIL import Image, ImageDraw, ImageFont
 
-# --- Correctif pour le bug du File Watcher de Streamlit avec PyTorch (Whisper) ---
-import torch
-torch.classes.__path__ = []
-# -----------------------------------------------------------------------------------
+# --- Whisper optionnel (trop lourd pour Streamlit Cloud) ---
+try:
+    import torch
+    torch.classes.__path__ = []
+    WHISPER_AVAILABLE = True
+except ImportError:
+    WHISPER_AVAILABLE = False
 
-# Connexion MongoDB (à adapter selon votre configuration)
-client = MongoClient("mongodb://localhost:27017/")
-db = client["translations_db"]
-collection = db["translations"]
 
-# Mots clés par thématique
-MOTS_CLES = {
-    "salutations": ["bonjour", "salut", "bonsoir", "merci", "aurevoir", "coucou", "ravi", "nom", "appelle", "prénom", "famille"],
-    "voyage": ["gare", "aéroport", "train", "bus", "taxi", "billet", "hôtel", "carte", "bateau", "port", "île", "océan", "plage", "voyage"],
-    "maison": ["cuisine", "chambre", "salon", "clé", "lampe", "table", "chaise", "maison", "toit", "cour", "bananier", "mangue", "coco", "village"],
-    "école": ["classe", "cahier", "stylo", "livre", "professeur", "élève", "examen", "école", "leçon", "apprendre", "étudier", "savoir"],
-    "vie_quotidienne": ["marché", "plage", "travail", "sport", "musique", "nourriture", "matin", "poisson", "riz", "manioc", "prière", "mosquée", "fête", "mariage", "soleil", "lagon"]
-}
-
-# Fonction pour récupérer une phrase via l'API Tatoeba
-def get_french_sentence():
-    api_url = 'https://tatoeba.org/en/api_v0/search?from=fra&sort=random&limit=10&tags=francais'
-    
-    max_attempts = 10
-    attempt = 0
-
-    # Choisir un thème et un mot clé aléatoires
-    theme = random.choice(list(MOTS_CLES.keys()))
-    mot_cle = random.choice(MOTS_CLES[theme])
-
-    while attempt < max_attempts:
+def get_font(size=48):
+    """Charge une police avec fallbacks selon l'OS."""
+    for path in [
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "C:/Windows/Fonts/arialbd.ttf",
+        "C:/Windows/Fonts/arial.ttf",
+    ]:
         try:
-            # Faire une requête avec le mot clé
-            response = requests.get(api_url.format(mot_cle))
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('results'):
-                    for result in data['results']:
-                        sentence = result['text']
-                        # Vérifier que la phrase a ≤10 mots, ne commence pas par "Erreur", et semble cohérente
-                        if (len(sentence.split()) <= 10 and 
-                            not sentence.startswith("Erreur") and 
-                            mot_cle.lower() in sentence.lower()):  # Vérifie que le mot est présent
-                            return sentence
-            attempt += 1
-        except Exception as e:
-            st.warning(f"Erreur API Tatoeba : {str(e)}")
-            attempt += 1
-    # Fallback si aucune phrase n’est trouvée
-    return f"Erreur : Aucune phrase avec '{mot_cle}' trouvée."
-
-# Fonction pour sauvegarder dans MongoDB (inchangée)
-def save_to_mongo(french_sentence, comorian_translation, username, dialect):
-    try:
-        doc = {
-            "french_sentence": french_sentence,
-            "comorian_translation": comorian_translation,
-            "username": username,
-            "dialect": dialect
-        }
-        collection.insert_one(doc)
-    except Exception as e:
-        st.error(f"Erreur lors de la sauvegarde dans MongoDB : {str(e)}")
+            return ImageFont.truetype(path, size)
+        except (IOError, OSError):
+            continue
+    return ImageFont.load_default()
 
 
-# Fonction pour récupérer et afficher les traductions depuis MongoDB
-def display_translations():
-    st.sidebar.markdown(
-        """
-        <style>
-        .sidebar .sidebar-content {
-            background-color: rgba(0, 0, 139, 0.3); /* Bleu foncé transparent */
-            padding: 10px;
-        }
-        h1 {
-            font-size: 24px;
-            line-height: 1.2;
-        }
-        h3 {
-            font-size: 18px;
-        }
-        .stButton > button {
-            width: 100%;
-            margin-bottom: 10px;
-            padding: 5px;
-            border-bottom: 1px solid #ccc;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
+def wrap_text(draw, text, font, max_width):
+    """Découpe le texte en lignes qui tiennent dans max_width."""
+    words = text.split()
+    lines, current = [], ""
+    for word in words:
+        test = f"{current} {word}".strip()
+        bbox = draw.textbbox((0, 0), test, font=font)
+        if bbox[2] - bbox[0] <= max_width:
+            current = test
+        else:
+            if current:
+                lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines if lines else [""]
+
+
+def create_frame(bg_image, text, size):
+    """Crée une image (numpy array) : fond + sous-titre en bas."""
+    img = bg_image.copy().resize(size, Image.LANCZOS)
+
+    if not text.strip():
+        return np.array(img.convert("RGB"))
+
+    font = get_font(max(28, size[0] // 20))
+
+    overlay = Image.new("RGBA", size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+
+    lines = wrap_text(draw, text, font, size[0] - 80)
+    line_h = max(30, size[0] // 18)
+    total_h = len(lines) * line_h + 24
+    y0 = size[1] - total_h - 50
+
+    # Fond semi-transparent derrière le texte
+    draw.rounded_rectangle(
+        [(30, y0 - 10), (size[0] - 30, y0 + total_h)],
+        radius=15, fill=(0, 0, 0, 180)
     )
 
-    # Compter le nombre total de traductions
-    try:
-        translations = collection.find().sort("_id", -1).limit(10)
-        count = 0
-        for translation in translations:
-            count += 1
-            st.sidebar.markdown(
-                f"""
-                <div class="translation-item">
-                    <strong>Français :</strong> {translation.get('french_sentence', 'Non disponible')}<br>
-                    <strong>ShiKomori :</strong> {translation.get('comorian_translation', 'Non disponible')}<br>
-                     <strong>Utilisateur :</strong> {translation.get('username', 'Anonyme')}
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-        if count == 0:
-            st.sidebar.write("Aucune traduction trouvée dans la base.")
-    except Exception as e:
-        st.sidebar.error(f"Erreur lors de la récupération des traductions : {str(e)}")
+    for i, line in enumerate(lines):
+        bbox = draw.textbbox((0, 0), line, font=font)
+        x = (size[0] - (bbox[2] - bbox[0])) // 2
+        y = y0 + i * line_h + 5
+        draw.text((x + 2, y + 2), line, font=font, fill=(0, 0, 0, 200))  # ombre
+        draw.text((x, y), line, font=font, fill="white")
 
-# Interface Streamlit
+    result = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+    return np.array(result)
+
+
+def generate_video(bg_image, audio_bytes, subtitle_lines, progress_bar=None):
+    """Génère un MP4 : image de fond + audio + sous-titres."""
+    from moviepy import ImageClip, AudioFileClip, concatenate_videoclips
+
+    audio_seg = AudioSegment.from_file(io.BytesIO(audio_bytes))
+    total_duration = len(audio_seg) / 1000.0
+
+    # Taille vidéo : garder le ratio de l'image, max 720px de large
+    w, h = bg_image.size
+    if w > 720:
+        h = int(h * (720 / w))
+        w = 720
+    w, h = w + (w % 2), h + (h % 2)  # dimensions paires (h264)
+    size = (w, h)
+
+    n = len(subtitle_lines)
+    dur = total_duration / n
+
+    clips = []
+    for i, line in enumerate(subtitle_lines):
+        frame = create_frame(bg_image, line, size)
+        clips.append(ImageClip(frame).with_duration(dur))
+        if progress_bar:
+            progress_bar.progress(int(((i + 1) / (n + 1)) * 100))
+
+    video = concatenate_videoclips(clips, method="compose")
+
+    audio_tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    audio_seg.export(audio_tmp, format="wav")
+    audio_tmp.close()
+
+    audio_clip = AudioFileClip(audio_tmp.name)
+    final = video.with_audio(audio_clip)
+
+    out_tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+    out_tmp.close()
+    final.write_videofile(out_tmp.name, fps=24, codec="libx264", audio_codec="aac", logger=None)
+
+    audio_clip.close()
+    final.close()
+    os.unlink(audio_tmp.name)
+
+    if progress_bar:
+        progress_bar.progress(100)
+
+    return out_tmp.name
+
+
+# ---- Helpers transcription ----
+
+def normalize_audio(audio_bytes):
+    """Normalise le volume et filtre le bruit de fond."""
+    seg = AudioSegment.from_file(io.BytesIO(audio_bytes))
+    seg = seg.set_channels(1).set_frame_rate(16000)
+    target_dbfs = -14.0
+    seg = seg.apply_gain(target_dbfs - seg.dBFS)
+    seg = seg.high_pass_filter(80)
+    return seg
+
+
+def transcribe_by_phrases(audio_seg, lang_code, recognizer):
+    """Découpe l'audio par silences et transcrit chaque segment → 1 ligne = 1 phrase."""
+    from pydub.silence import split_on_silence
+
+    # Découper aux silences (min_silence=400ms, seuil=-35 dBFS, garder 200ms de marge)
+    segments = split_on_silence(
+        audio_seg,
+        min_silence_len=400,
+        silence_thresh=audio_seg.dBFS - 16,
+        keep_silence=200
+    )
+
+    # Si pas de segments détectés, fallback : chunks de 8s
+    if not segments:
+        segments = [audio_seg[i:i + 8000] for i in range(0, len(audio_seg), 8000)]
+
+    lines = []
+    for seg in segments:
+        if len(seg) < 200:  # segment trop court → ignorer
+            continue
+        buf = io.BytesIO()
+        seg.export(buf, format="wav")
+        buf.seek(0)
+        with sr.AudioFile(buf) as src:
+            data = recognizer.record(src)
+            try:
+                text = recognizer.recognize_google(data, language=lang_code)
+                if text.strip():
+                    lines.append(text.strip())
+            except sr.UnknownValueError:
+                pass
+    return lines
+
+
+def transcribe_full(audio_seg, lang_code, recognizer):
+    """Transcription complète en un seul texte (chunks de 45s)."""
+    chunks = [audio_seg[i:i + 45000] for i in range(0, len(audio_seg), 45000)]
+    parts = []
+    for chunk in chunks:
+        buf = io.BytesIO()
+        chunk.export(buf, format="wav")
+        buf.seek(0)
+        with sr.AudioFile(buf) as src:
+            data = recognizer.record(src)
+            try:
+                parts.append(recognizer.recognize_google(data, language=lang_code))
+            except sr.UnknownValueError:
+                pass
+    return " ".join(parts)
+
+
+# ===================== INTERFACE =====================
+
 def main():
-    # Compter le nombre total de traductions
-    try:
-        total_translations = collection.count_documents({})
-        target = 100
-        progress_text = f"{total_translations}/{target}"
-    except Exception as e:
-        total_translations = 0
-        progress_text = "Erreur lors du comptage"
-        st.error(f"Erreur MongoDB : {str(e)}")
+    st.set_page_config(page_title="Vidéo Sous-titrée ShiKomori", page_icon="🎬", layout="centered")
 
-    # Titre principal en bleu foncé
-    st.markdown(
-        f"""
-        <h2 style="color: #00008B;">
-            🌍 Salam ! Traduis des phrases en comorien et aide-nous à augmenter le chiffre ci-dessous.</h2>
-        <h2 style="color: #00008B;">On est à <span style="color: #228B22;">{progress_text}</span> phrases traduites ! 💪
-        </h2>
-        """,
-        unsafe_allow_html=True
-    )
+    st.markdown("""
+        <h2 style="color: #00008B;">🎬 Générateur de Vidéo Sous-titrée ShiKomori</h2>
+        <p style="color: #555;">Audio shiKomori → Sous-titres phrase par phrase → Traduction FR vocale → CSV + Vidéo</p>
+    """, unsafe_allow_html=True)
 
-    # Afficher les traductions dans la barre latérale
-    display_translations()
+    # ---- 1. IMAGE DE FOND ----
+    st.markdown("### 🖼️ Image de fond")
+    uploaded_img = st.file_uploader("Choisis une image", type=["png", "jpg", "jpeg", "webp"], key="img")
+    bg_image = None
+    if uploaded_img:
+        bg_image = Image.open(uploaded_img)
+        st.image(bg_image, caption="Image sélectionnée", use_container_width=True)
 
-    # Section des rappels de règles avec menu déroulant
-    with st.expander("Quelques rappels des règles du shiKomori", expanded=False):
-        st.markdown(
-            '<h2 style="color: #800020; font-weight: bold;">Quelques rappels des règles du shiKomori</h2>',
-            unsafe_allow_html=True
-        )
-        st.markdown(
-            '<h3 style="color: #0000FF;">1. Règles orthographiques</h3>',
-            unsafe_allow_html=True
-        )
-        st.markdown("""
-        - **Son [OU]** : S'écrit avec **u**.  
-          *Exemple* : *mdru* (personne) au lieu de « mdrou ».  
-        - **Son [OI]** : S'écrit avec **wa**.  
-          *Exemple* : *mwana* (enfant) au lieu de « moina ».  
-        - **Son [CH]** : S'écrit avec **sh**.  
-          *Exemple* : *shiyo* (enfant) au lieu de « chiyo ».  
-        - **Son [TCH]** : S'écrit avec **c**.  
-          *Exemple* : *macacari* (enfant) au lieu de «matchatchari».
-        """)
+    # ---- 2. AUDIO SHIKOMORI ----
+    st.markdown("### 🎤 Audio ShiKomori")
 
-    # Section choix du dialecte
-    st.markdown(
-        '<h3 style="color: #00008B;">Choisissez le dialecte pour votre traduction</h3>',
-        unsafe_allow_html=True
-    )
+    engines = ["Google (Rapide)"]
+    if WHISPER_AVAILABLE:
+        engines.append("Whisper (précis)")
+    engine = st.radio("Moteur :", engines)
 
-    # Boutons pour choisir le dialecte
-    if 'selected_dialect' not in st.session_state:
-        st.session_state.selected_dialect = None
-
-    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
-    with col1:
-        label1 = "✅ Shingazidja" if st.session_state.selected_dialect == "Shingazidja" else "Shingazidja"
-        if st.button(label1, key="shingazidja"):
-            st.session_state.selected_dialect = "Shingazidja"
-            st.rerun()
-    with col2:
-        label2 = "✅ Shindzouani" if st.session_state.selected_dialect == "Shindzouani" else "Shindzouani"
-        if st.button(label2, key="shindzouani"):
-            st.session_state.selected_dialect = "Shindzouani"
-            st.rerun()
-    with col3:
-        label3 = "✅ Shimwali" if st.session_state.selected_dialect == "Shimwali" else "Shimwali"
-        if st.button(label3, key="shimwali"):
-            st.session_state.selected_dialect = "Shimwali"
-            st.rerun()
-    with col4:
-        label4 = "✅ Shimaore" if st.session_state.selected_dialect == "Shimaore" else "Shimaore"
-        if st.button(label4, key="shimaore"):
-            st.session_state.selected_dialect = "Shimaore"
-            st.rerun()
-
-    # Injecter JavaScript pour styliser dynamiquement les boutons de dialecte selon leur texte
-    components.html(
-        """
-        <script>
-        function styleButtons() {
-            const doc = window.parent.document;
-            const buttons = Array.from(doc.querySelectorAll('div[data-testid="column"] button'));
-            buttons.forEach(btn => {
-                const text = btn.textContent || "";
-                if (text.includes("Shingazidja")) {
-                    btn.style.setProperty("background-color", "#87CEFA", "important");
-                    btn.style.setProperty("color", "black", "important");
-                    btn.style.setProperty("border", "none", "important");
-                    btn.style.setProperty("border-radius", "5px", "important");
-                    btn.style.setProperty("width", "100%", "important");
-                } else if (text.includes("Shindzouani")) {
-                    btn.style.setProperty("background-color", "#FF9999", "important");
-                    btn.style.setProperty("color", "black", "important");
-                    btn.style.setProperty("border", "none", "important");
-                    btn.style.setProperty("border-radius", "5px", "important");
-                    btn.style.setProperty("width", "100%", "important");
-                } else if (text.includes("Shimwali")) {
-                    btn.style.setProperty("background-color", "#FFFF99", "important");
-                    btn.style.setProperty("color", "black", "important");
-                    btn.style.setProperty("border", "none", "important");
-                    btn.style.setProperty("border-radius", "5px", "important");
-                    btn.style.setProperty("width", "100%", "important");
-                } else if (text.includes("Shimaore")) {
-                    btn.style.setProperty("background-color", "#FFFFFF", "important");
-                    btn.style.setProperty("color", "black", "important");
-                    btn.style.setProperty("border", "1px solid #ccc", "important");
-                    btn.style.setProperty("border-radius", "5px", "important");
-                    btn.style.setProperty("width", "100%", "important");
-                }
-            });
-        }
-        styleButtons();
-        setTimeout(styleButtons, 100);
-        setTimeout(styleButtons, 500);
-        </script>
-        """,
-        height=0,
-        width=0
-    )
-
-    # Afficher le dialecte sélectionné
-    if st.session_state.selected_dialect:
-        st.write(f"Dialecte sélectionné : **{st.session_state.selected_dialect}**")
-    else:
-        st.warning("Veuillez sélectionner un dialecte avant de traduire.")
-
-    # Section traduction
-    if 'french_sentence' not in st.session_state:
-        st.session_state.french_sentence = get_french_sentence()
-
-    text_area_key = f"translation_{st.session_state.french_sentence}"
-
-    username = st.text_input("Entrez votre nom d'utilisateur (Optionnel)", key="username_input")
-
-    st.write(f"Phrase en français : {st.session_state.french_sentence}")
-
-    if st.button("Actualiser la phrase"):
-        st.session_state.french_sentence = get_french_sentence()
-        st.rerun()
-
-    # Section enregistrement audio pour la traduction
-    st.markdown("### 🎤 Dicter la traduction en comorien (Optionnel)")
-    st.write("*(La transcription phonétique s'affichera dans le champ de texte, vous pourrez ensuite la corriger)*")
-    
-    transcription_engine = st.radio("Moteur de transcription :", ["Google (Rapide, tranches de 45s)", "Whisper (Local, très précis, sans limite de taille)"])
-
-    lang_options = {
-        "Swahili (Tanzanie) - sw-TZ": "sw-TZ",
-        "Swahili (Kenya) - sw-KE": "sw-KE",
-        "Zoulou (Afrique du Sud) - zu-ZA": "zu-ZA",
-        "Français (France) - fr-FR": "fr-FR"
+    lang_map = {
+        "Swahili (Tanzanie)": "sw-TZ",
+        "Swahili (Kenya)": "sw-KE",
+        "Français": "fr-FR",
     }
-    
-    whisper_lang_map = {
-        "sw-KE": "sw",
-        "sw-TZ": "sw",
-        "zu-ZA": "zu",
-        "fr-FR": "fr"
-    }
-
-    selected_lang_label = st.selectbox("Choisissez une langue de base pour tester la transcription :", list(lang_options.keys()))
-    base_lang_code = lang_options[selected_lang_label]
+    whisper_map = {"sw-TZ": "sw", "sw-KE": "sw", "fr-FR": "fr"}
+    lang = st.selectbox("Langue de base pour la transcription :", list(lang_map.keys()))
+    lang_code = lang_map[lang]
 
     audio_bytes = None
+    tab1, tab2 = st.tabs(["🎤 Enregistrer", "📁 Charger un fichier"])
 
-    tab1, tab2 = st.tabs(["🎤 Enregistrer", "📁 Charger un fichier audio"])
-    
     with tab1:
-        recorded_audio = audio_recorder(text="Cliquez pour enregistrer", recording_color="#e81c4f", neutral_color="#6aa36f", icon_name="microphone", icon_size="2x", key=f"audio_recorder_{st.session_state.french_sentence}")
-        if recorded_audio:
-            audio_bytes = recorded_audio
+        rec = audio_recorder(
+            text="Enregistrer shiKomori", recording_color="#e81c4f",
+            neutral_color="#6aa36f", icon_name="microphone",
+            icon_size="2x", key="rec_komori"
+        )
+        if rec:
+            audio_bytes = rec
 
     with tab2:
-        uploaded_file = st.file_uploader("Choisissez un fichier audio ou vidéo (formats supportés: WAV, FLAC, AIFF, MP3, MP4, M4A)", type=["wav", "flac", "aiff", "mp3", "mp4", "m4a"], key=f"file_uploader_{st.session_state.french_sentence}")
-        if uploaded_file is not None:
-            file_extension = uploaded_file.name.split('.')[-1].lower()
+        up = st.file_uploader(
+            "Audio shiKomori (WAV, MP3, MP4, M4A, FLAC)",
+            type=["wav", "mp3", "mp4", "m4a", "flac"], key="aud_komori"
+        )
+        if up:
             try:
-                # On utilise pydub pour charger le fichier, peu importe son format
-                # Le format 'm4a' ou 'mp4' est géré par le lecteur ffmpeg sous-jacent
-                audio_segment = AudioSegment.from_file(io.BytesIO(uploaded_file.read()))
-
-                # Normaliser l'audio : 1 canal (mono) et 16000 Hz, idéal pour SpeechRecognition
-                audio_segment = audio_segment.set_channels(1).set_frame_rate(16000)
-                
-                wav_io = io.BytesIO()
-                audio_segment.export(wav_io, format="wav")
-                audio_bytes = wav_io.getvalue()
+                seg = AudioSegment.from_file(io.BytesIO(up.read()))
+                seg = seg.set_channels(1).set_frame_rate(16000)
+                buf = io.BytesIO()
+                seg.export(buf, format="wav")
+                audio_bytes = buf.getvalue()
             except Exception as e:
-                st.error(f"Erreur lors de la préparation du fichier audio : {e}")
-    
-    # On re-transcrit si l'audio change OU si la langue change OU si le moteur change
+                st.error(f"Erreur audio : {e}")
+
+    # ---- 3. TRANSCRIPTION SHIKOMORI (par phrases) ----
     if audio_bytes:
-        if (st.session_state.get('last_audio_bytes') != audio_bytes or 
-            st.session_state.get('last_transcription_lang') != base_lang_code or
-            st.session_state.get('last_transcription_engine') != transcription_engine):
-            
-            st.session_state.last_audio_bytes = audio_bytes
-            st.session_state.last_transcription_lang = base_lang_code
-            st.session_state.last_transcription_engine = transcription_engine
-            
-            # Transcription
-            with st.spinner("Transcription en cours (cela peut prendre du temps avec Whisper)..."):
+        if (st.session_state.get("_aud_km") != audio_bytes or
+            st.session_state.get("_lang_km") != lang_code or
+            st.session_state.get("_eng_km") != engine):
+
+            st.session_state._aud_km = audio_bytes
+            st.session_state._lang_km = lang_code
+            st.session_state._eng_km = engine
+
+            try:
+                normalized_seg = normalize_audio(audio_bytes)
+            except Exception:
+                normalized_seg = AudioSegment.from_file(io.BytesIO(audio_bytes))
+
+            with st.spinner("Transcription shiKomori phrase par phrase..."):
                 try:
                     r = sr.Recognizer()
-                    
-                    if "Whisper" in transcription_engine:
-                        st.info("💡 Premier lancement de Whisper 'small' : le téléchargement du modèle plus puissant (~460 Mo) se fait en arrière-plan...")
-                        with sr.AudioFile(io.BytesIO(audio_bytes)) as source:
-                            audio_data = r.record(source)
-                            whisper_lang = whisper_lang_map.get(base_lang_code, "sw")
-                            transcribed_text = r.recognize_whisper(audio_data, language=whisper_lang, model="small")
-                            st.session_state[text_area_key] = transcribed_text
-                    else:
-                        # Moteur GOOGLE avec découpage en tranches
-                        audio_segment = AudioSegment.from_file(io.BytesIO(audio_bytes))
-                        audio_segment = audio_segment.set_channels(1).set_frame_rate(16000)
-                        
-                        chunk_length_ms = 45000 # 45 secondes
-                        chunks = [audio_segment[i:i + chunk_length_ms] for i in range(0, len(audio_segment), chunk_length_ms)]
-                        
-                        full_text = []
-                        progress_bar = st.progress(0)
-                        
-                        for i, chunk in enumerate(chunks):
-                            wav_io = io.BytesIO()
-                            chunk.export(wav_io, format="wav")
-                            wav_io.seek(0)
-                            
-                            with sr.AudioFile(wav_io) as source:
-                                audio_data = r.record(source)
-                                try:
-                                    text = r.recognize_google(audio_data, language=base_lang_code)
-                                    full_text.append(text)
-                                except sr.UnknownValueError:
-                                    pass
-                            
-                            progress_bar.progress((i + 1) / len(chunks))
-                            
-                        progress_bar.empty()
-                        
-                        transcribed_text = " ".join(full_text)
-                        if not transcribed_text.strip():
-                            st.warning("L'audio n'a pas pu être compris ou ne contient que du silence.")
-                        else:
-                            st.session_state[text_area_key] = transcribed_text
-                            
-                except sr.RequestError as e:
-                    st.error(f"Erreur du service de reconnaissance vocale : {e}")
-                except Exception as e:
-                    st.error(f"Erreur lors de la transcription : {e}")
+                    r.energy_threshold = 300
+                    r.dynamic_energy_threshold = True
+                    r.pause_threshold = 0.8
 
-    # Afficher l'audio enregistré pour que l'utilisateur puisse se réécouter
-    if audio_bytes:
+                    if "Whisper" in engine and WHISPER_AVAILABLE:
+                        st.info("⏳ Whisper 'small' (~460 Mo au 1er lancement)...")
+                        norm_buf = io.BytesIO()
+                        normalized_seg.export(norm_buf, format="wav")
+                        with sr.AudioFile(io.BytesIO(norm_buf.getvalue())) as src:
+                            data = r.record(src)
+                            wl = whisper_map.get(lang_code, "sw")
+                            full = r.recognize_whisper(data, language=wl, model="small")
+                            # Whisper retourne un texte continu → découper par ponctuation
+                            import re
+                            parts = re.split(r'[.!?،,]+', full)
+                            st.session_state.subtitles_text = "\n".join(
+                                p.strip() for p in parts if p.strip()
+                            )
+                    else:
+                        lines = transcribe_by_phrases(normalized_seg, lang_code, r)
+                        if lines:
+                            st.session_state.subtitles_text = "\n".join(lines)
+                        else:
+                            st.warning("Aucun texte détecté.")
+                            st.session_state.subtitles_text = ""
+                except Exception as e:
+                    st.error(f"Erreur transcription : {e}")
+                    st.session_state.subtitles_text = ""
+
         st.audio(audio_bytes, format="audio/wav")
 
-    # S'assurer que la clé existe pour éviter une erreur
-    if text_area_key not in st.session_state:
-        st.session_state[text_area_key] = ""
+    # ---- 4. SOUS-TITRES SHIKOMORI (correction) ----
+    st.markdown("### ✏️ Sous-titres ShiKomori")
+    st.caption("**1 ligne = 1 sous-titre** (découpé automatiquement par phrase). Corrige si besoin.")
 
-    comorian_translation = st.text_area("Fasiri shiKomori", key=text_area_key)
+    if "subtitles_text" not in st.session_state:
+        st.session_state.subtitles_text = ""
 
-    if st.button('Soumettre'):
-        if not comorian_translation:
-            st.error("Veuillez entrer une traduction.")
-        elif not st.session_state.selected_dialect:
-            st.error("Veuillez sélectionner un dialecte.")
+    subtitles = st.text_area("Sous-titres shiKomori :", height=200, key="subtitles_text")
+
+    # ---- 5. TRADUCTION FRANÇAISE (vocale) ----
+    st.markdown("### 🇫🇷 Traduction française (vocale)")
+    st.caption("Enregistre ou charge l'audio de la traduction en français.")
+
+    fr_audio_bytes = None
+    fr_tab1, fr_tab2 = st.tabs(["🎤 Dicter en français", "📁 Charger audio français"])
+
+    with fr_tab1:
+        fr_rec = audio_recorder(
+            text="Enregistrer français", recording_color="#3498db",
+            neutral_color="#2ecc71", icon_name="microphone",
+            icon_size="2x", key="rec_fr"
+        )
+        if fr_rec:
+            fr_audio_bytes = fr_rec
+
+    with fr_tab2:
+        fr_up = st.file_uploader(
+            "Audio français (WAV, MP3, MP4, M4A, FLAC)",
+            type=["wav", "mp3", "mp4", "m4a", "flac"], key="aud_fr"
+        )
+        if fr_up:
+            try:
+                seg = AudioSegment.from_file(io.BytesIO(fr_up.read()))
+                seg = seg.set_channels(1).set_frame_rate(16000)
+                buf = io.BytesIO()
+                seg.export(buf, format="wav")
+                fr_audio_bytes = buf.getvalue()
+            except Exception as e:
+                st.error(f"Erreur audio FR : {e}")
+
+    # Transcription française
+    if fr_audio_bytes:
+        if (st.session_state.get("_aud_fr") != fr_audio_bytes):
+            st.session_state._aud_fr = fr_audio_bytes
+
+            try:
+                fr_seg = normalize_audio(fr_audio_bytes)
+            except Exception:
+                fr_seg = AudioSegment.from_file(io.BytesIO(fr_audio_bytes))
+
+            with st.spinner("Transcription français..."):
+                try:
+                    r = sr.Recognizer()
+                    r.energy_threshold = 300
+                    r.dynamic_energy_threshold = True
+                    fr_text = transcribe_full(fr_seg, "fr-FR", r)
+                    if fr_text.strip():
+                        st.session_state.french_text = fr_text
+                    else:
+                        st.warning("Aucun texte français détecté.")
+                        st.session_state.french_text = ""
+                except Exception as e:
+                    st.error(f"Erreur transcription FR : {e}")
+                    st.session_state.french_text = ""
+
+        st.audio(fr_audio_bytes, format="audio/wav")
+
+    if "french_text" not in st.session_state:
+        st.session_state.french_text = ""
+
+    french = st.text_area("Traduction française :", height=150, key="french_text")
+
+    # ---- 6. EXPORT CSV ----
+    st.markdown("### 📥 Export CSV")
+    if subtitles.strip() or french.strip():
+        import csv
+        csv_buf = io.StringIO()
+        writer = csv.writer(csv_buf)
+        writer.writerow(["shiKomori", "Français"])
+
+        km_lines = [l.strip() for l in subtitles.strip().split("\n") if l.strip()] if subtitles.strip() else []
+        fr_lines = [l.strip() for l in french.strip().split("\n") if l.strip()] if french.strip() else []
+
+        # Si le français est un bloc continu, le mettre sur une seule ligne
+        if len(fr_lines) == 0:
+            fr_lines = [""]
+        if len(km_lines) == 0:
+            km_lines = [""]
+
+        max_rows = max(len(km_lines), len(fr_lines))
+        for i in range(max_rows):
+            km = km_lines[i] if i < len(km_lines) else ""
+            fr = fr_lines[i] if i < len(fr_lines) else ""
+            writer.writerow([km, fr])
+
+        st.download_button(
+            "⬇️ Télécharger CSV (shiKomori + Français)",
+            csv_buf.getvalue(),
+            "traduction_shikomori_francais.csv",
+            "text/csv"
+        )
+
+    # ---- 7. GÉNÉRATION VIDÉO ----
+    st.markdown("### 🎬 Génération vidéo")
+    if st.button("🎬 Générer la vidéo"):
+        if not bg_image:
+            st.error("Choisis une image de fond.")
+        elif not audio_bytes:
+            st.error("Enregistre ou charge un audio shiKomori.")
+        elif not subtitles.strip():
+            st.error("Les sous-titres sont vides.")
         else:
-            final_username = username if username.strip() else "Anonyme"
-            save_to_mongo(st.session_state.french_sentence, comorian_translation, final_username, st.session_state.selected_dialect)
-            st.success("Traduction soumise avec succès !")
-            st.session_state.french_sentence = get_french_sentence()
-            st.session_state.selected_dialect = None
-            if text_area_key in st.session_state:
-                st.session_state[text_area_key] = ""
-            if 'last_audio_bytes' in st.session_state:
-                del st.session_state['last_audio_bytes']
-            st.rerun()
+            lines = [l for l in subtitles.strip().split("\n") if l.strip()]
+            bar = st.progress(0, text="Génération de la vidéo...")
+            try:
+                path = generate_video(bg_image, audio_bytes, lines, bar)
+                bar.empty()
 
-if __name__ == '__main__':
+                with open(path, "rb") as f:
+                    video_bytes = f.read()
+                os.unlink(path)
+
+                st.video(video_bytes)
+                st.download_button("⬇️ Télécharger la vidéo", video_bytes, "video_sous_titree.mp4", "video/mp4")
+            except Exception as e:
+                bar.empty()
+                st.error(f"Erreur génération : {e}")
+
+
+if __name__ == "__main__":
     main()

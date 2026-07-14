@@ -123,8 +123,15 @@ def display_translations():
 
 # Interface Streamlit
 def main():
-    # Message de débogage initial
-    
+    # Compter le nombre total de traductions
+    try:
+        total_translations = collection.count_documents({})
+        target = 100
+        progress_text = f"{total_translations}/{target}"
+    except Exception as e:
+        total_translations = 0
+        progress_text = "Erreur lors du comptage"
+        st.error(f"Erreur MongoDB : {str(e)}")
 
     # Titre principal en bleu foncé
     st.markdown(
@@ -239,11 +246,11 @@ def main():
                     r = sr.Recognizer()
                     
                     if "Whisper" in transcription_engine:
-                        st.info("💡 Premier lancement de Whisper : le téléchargement du modèle (140 Mo) se fait en arrière-plan...")
+                        st.info("💡 Premier lancement de Whisper 'small' : le téléchargement du modèle plus puissant (~460 Mo) se fait en arrière-plan...")
                         with sr.AudioFile(io.BytesIO(audio_bytes)) as source:
                             audio_data = r.record(source)
                             whisper_lang = whisper_lang_map.get(base_lang_code, "sw")
-                            transcribed_text = r.recognize_whisper(audio_data, language=whisper_lang, model="base")
+                            transcribed_text = r.recognize_whisper(audio_data, language=whisper_lang, model="small")
                             st.session_state[text_area_key] = transcribed_text
                     else:
                         # Moteur GOOGLE avec découpage en tranches

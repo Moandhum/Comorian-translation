@@ -168,11 +168,96 @@ def main():
           *Exemple* : *macacari* (enfant) au lieu de «matchatchari».
         """)
 
+    # Section choix du dialecte
+    st.markdown(
+        '<h3 style="color: #00008B;">Choisissez le dialecte pour votre traduction</h3>',
+        unsafe_allow_html=True
+    )
+
+    # Boutons pour choisir le dialecte
+    if 'selected_dialect' not in st.session_state:
+        st.session_state.selected_dialect = None
+
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
+    with col1:
+        label1 = "✅ Shingazidja" if st.session_state.selected_dialect == "Shingazidja" else "Shingazidja"
+        if st.button(label1, key="shingazidja"):
+            st.session_state.selected_dialect = "Shingazidja"
+            st.rerun()
+    with col2:
+        label2 = "✅ Shindzouani" if st.session_state.selected_dialect == "Shindzouani" else "Shindzouani"
+        if st.button(label2, key="shindzouani"):
+            st.session_state.selected_dialect = "Shindzouani"
+            st.rerun()
+    with col3:
+        label3 = "✅ Shimwali" if st.session_state.selected_dialect == "Shimwali" else "Shimwali"
+        if st.button(label3, key="shimwali"):
+            st.session_state.selected_dialect = "Shimwali"
+            st.rerun()
+    with col4:
+        label4 = "✅ Shimaore" if st.session_state.selected_dialect == "Shimaore" else "Shimaore"
+        if st.button(label4, key="shimaore"):
+            st.session_state.selected_dialect = "Shimaore"
+            st.rerun()
+
+    # Injecter JavaScript pour styliser dynamiquement les boutons de dialecte selon leur texte
+    components.html(
+        """
+        <script>
+        function styleButtons() {
+            const doc = window.parent.document;
+            const buttons = Array.from(doc.querySelectorAll('div[data-testid="column"] button'));
+            buttons.forEach(btn => {
+                const text = btn.textContent || "";
+                if (text.includes("Shingazidja")) {
+                    btn.style.setProperty("background-color", "#87CEFA", "important");
+                    btn.style.setProperty("color", "black", "important");
+                    btn.style.setProperty("border", "none", "important");
+                    btn.style.setProperty("border-radius", "5px", "important");
+                    btn.style.setProperty("width", "100%", "important");
+                } else if (text.includes("Shindzouani")) {
+                    btn.style.setProperty("background-color", "#FF9999", "important");
+                    btn.style.setProperty("color", "black", "important");
+                    btn.style.setProperty("border", "none", "important");
+                    btn.style.setProperty("border-radius", "5px", "important");
+                    btn.style.setProperty("width", "100%", "important");
+                } else if (text.includes("Shimwali")) {
+                    btn.style.setProperty("background-color", "#FFFF99", "important");
+                    btn.style.setProperty("color", "black", "important");
+                    btn.style.setProperty("border", "none", "important");
+                    btn.style.setProperty("border-radius", "5px", "important");
+                    btn.style.setProperty("width", "100%", "important");
+                } else if (text.includes("Shimaore")) {
+                    btn.style.setProperty("background-color", "#FFFFFF", "important");
+                    btn.style.setProperty("color", "black", "important");
+                    btn.style.setProperty("border", "1px solid #ccc", "important");
+                    btn.style.setProperty("border-radius", "5px", "important");
+                    btn.style.setProperty("width", "100%", "important");
+                }
+            });
+        }
+        styleButtons();
+        setTimeout(styleButtons, 100);
+        setTimeout(styleButtons, 500);
+        </script>
+        """,
+        height=0,
+        width=0
+    )
+
+    # Afficher le dialecte sélectionné
+    if st.session_state.selected_dialect:
+        st.write(f"Dialecte sélectionné : **{st.session_state.selected_dialect}**")
+    else:
+        st.warning("Veuillez sélectionner un dialecte avant de traduire.")
+
     # Section traduction
     if 'french_sentence' not in st.session_state:
         st.session_state.french_sentence = get_french_sentence()
 
-    username = st.text_input("Entrez votre nom d'utilisateur", key="username_input")
+    text_area_key = f"translation_{st.session_state.french_sentence}"
+
+    username = st.text_input("Entrez votre nom d'utilisateur (Optionnel)", key="username_input")
 
     st.write(f"Phrase en français : {st.session_state.french_sentence}")
 
@@ -307,9 +392,15 @@ def main():
         elif not st.session_state.selected_dialect:
             st.error("Veuillez sélectionner un dialecte.")
         else:
-            save_to_mongo(st.session_state.french_sentence, comorian_translation, username)
+            final_username = username if username.strip() else "Anonyme"
+            save_to_mongo(st.session_state.french_sentence, comorian_translation, final_username, st.session_state.selected_dialect)
             st.success("Traduction soumise avec succès !")
             st.session_state.french_sentence = get_french_sentence()
+            st.session_state.selected_dialect = None
+            if text_area_key in st.session_state:
+                st.session_state[text_area_key] = ""
+            if 'last_audio_bytes' in st.session_state:
+                del st.session_state['last_audio_bytes']
             st.rerun()
 
 if __name__ == '__main__':

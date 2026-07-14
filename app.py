@@ -181,8 +181,19 @@ def transcribe_by_phrases(audio_seg, lang_code, recognizer):
     return lines
 
 
-def transcribe_full(audio_seg, lang_code, recognizer):
-    """Transcription complète en un seul texte (chunks de 45s)."""
+def transcribe_full(audio_seg, lang_code, recognizer, engine="Google (Rapide)", whisper_lang="fr"):
+    """Transcription complète en un seul texte (chunks de 45s pour Google, complet pour Whisper)."""
+    if "Whisper" in engine and WHISPER_AVAILABLE:
+        buf = io.BytesIO()
+        audio_seg.export(buf, format="wav")
+        with sr.AudioFile(io.BytesIO(buf.getvalue())) as src:
+            data = recognizer.record(src)
+            try:
+                return recognizer.recognize_whisper(data, language=whisper_lang, model="small")
+            except Exception:
+                pass
+                
+    # Fallback Google
     chunks = [audio_seg[i:i + 45000] for i in range(0, len(audio_seg), 45000)]
     parts = []
     for chunk in chunks:
@@ -381,12 +392,12 @@ def main():
             except Exception:
                 fr_seg = AudioSegment.from_file(io.BytesIO(fr_audio_bytes))
 
-            with st.spinner("Transcription français..."):
+            with st.spinner(f"Transcription français ({engine})..."):
                 try:
                     r = sr.Recognizer()
                     r.energy_threshold = 300
                     r.dynamic_energy_threshold = True
-                    fr_text = transcribe_full(fr_seg, "fr-FR", r)
+                    fr_text = transcribe_full(fr_seg, "fr-FR", r, engine=engine, whisper_lang="fr")
                     if fr_text.strip():
                         st.session_state.french_text = fr_text
                     else:
